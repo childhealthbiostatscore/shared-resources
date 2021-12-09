@@ -1,0 +1,39 @@
+---
+title: "Glucose Variability - Overall Survival"
+author: "Kristen Campbell"
+date: "January 6, 2020"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+setwd("S:/Shared Projects/Kristen/Sopfe, Jenna/Code/")
+##functions specifically for this project
+source("functions.R")
+#data prep file:
+source("data_prep_CV.R")
+#analysis files:
+source("OS_CV.R")
+
+
+
+```
+
+
+## Primary Outcome 3: Overall Survival
+**Table 1: Overall Survival Summary Statistics**
+```{r,echo=FALSE,message=FALSE,results='asis',warning=FALSE}
+kable(os_table, align = c("l", "l"))
+```
+
+**Table 2a: Overall Survival: Pre-Tx Variability**
+```{r,echo=FALSE,message=FALSE,results='asis',warning=FALSE}
+kable(os_pre, align = c("l", "l"))
+```
+
+**Table 2b: Overall Survival: Post-Tx Days 0-30 Variability**
+```{r,echo=FALSE,message=FALSE,results='asis',warning=FALSE}
+kable(os_0_30, align = c("l", "l"))
+```
+
+

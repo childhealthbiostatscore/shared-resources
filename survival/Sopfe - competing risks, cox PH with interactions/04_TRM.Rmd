@@ -1,0 +1,39 @@
+---
+title: "Glucose Variability - Treatment Related Mortality"
+author: "Kristen Campbell"
+date: "August 26, 2019"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+setwd("S:/Shared Projects/Kristen/Sopfe, Jenna/Code/")
+##functions specifically for this project
+source("functions.R")
+#data prep file:
+source("data_prep_CV.R")
+#analysis files:
+source("treatment related mortality_CV.R")
+
+
+
+```
+
+
+## Primary Outcome 3: Treatment Related Mortality (TRM)
+**Table 1: TRM Summary Statistics**
+```{r,echo=FALSE,message=FALSE,results='asis',warning=FALSE}
+kable(trm_table, align = c("l", "l"))
+```
+
+**Table 2a: TRM: Pre-Tx Variability**
+```{r,echo=FALSE,message=FALSE,results='asis',warning=FALSE}
+kable(trm_pre, align = c("l", "l"))
+```
+
+**Table 2b: TRM: Post-Tx Days 0-30 Variability**
+```{r,echo=FALSE,message=FALSE,results='asis',warning=FALSE}
+kable(trm_0_30, align = c("l", "l"))
+```
+
+
