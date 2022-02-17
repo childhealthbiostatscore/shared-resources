@@ -1,0 +1,855 @@
+---
+title: "Incidence of youth-onset type 2 diabetes during the COVID-19 pandemic"
+author: "Laura Pyle"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    number_sections: yes
+    theme: readable
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r setup, include=FALSE}
+library(MASS)
+library(skimr)
+library(stringr)
+library(dplyr)
+library(tableone)
+library(knitr)
+library(lubridate)
+library(ggplot2)
+library(tscount)
+library(childsds)
+library(vcd)
+library(skimr)
+library(fuzzyjoin)
+knitr::opts_chunk$set(echo = FALSE)
+if(Sys.info()["sysname"] == "Windows"){
+  home_dir = "E:/Megan Kelsey"
+} else if (Sys.info()["sysname"] == "Linux"){
+  home_dir = "~/UCD/PEDS/RI Biostatistics Core/Shared/Shared Projects/Laura/Peds Endo/Megan Kelsey"
+} else if (Sys.info()["sysname"] == "Darwin"){
+  home_dir = "/Volumes/PEDS/RI Biostatistics Core/Shared/Shared Projects/Laura/Peds Endo/Megan Kelsey"
+}
+knitr::opts_knit$set(root.dir = home_dir)
+```
+
+```{r}
+#################
+# READ IN DATA  #
+#################
+columbia <- read.csv("./T2D and COVID/Data raw/T2D COVID multisite template 2018_2020_Columbia.csv")
+names <- colnames(columbia)
+names[1] <- "ptid"
+colnames(columbia) <- names
+columbia$site <- "Columbia"
+columbia$X <- NULL
+# exclude 2 participants with BMI <85th percentile
+columbia <- columbia %>% filter(!ptid %in% c(1006140219,1009535804))
+# exclude 7 year old because can't rule out MODY
+columbia <- columbia %>% filter(!age_dx==7.4)
+# exclude those with missing ab info
+columbia <- columbia %>% filter(!(GAD65.Ab=="Not Tested" & Insulin.Ab=="Not Tested" & ICA.Ab=="Not Tested" & ZnT8.Ab=="Not Tested"))
+# exclude those with only 1 ab tested
+columbia <- columbia %>% filter(!ptid %in% c(1006952712,1204406491,1203406491))
+columbia$region <- "Northeast"
+
+chicago <- read.csv("./T2D and COVID/Data raw/2021.8.30 T2D COVID UChicago FINAL deidentified2.csv")
+chicago$site <- "Chicago"
+# exclude 2 ppts with low BMI
+chicago <- chicago %>% filter(!BMI %in% c(15.1,25.5))
+chicago$region <- "Midwest"
+
+mayo <- read.csv("./T2D and COVID/Data raw/8-27-21MayoUpload.csv")
+mayo$site <- "Mayo"
+mayo$region <- "Midwest"
+
+chla <- read.csv("./T2D and COVID/Data raw/bmicheck_chla.csv")
+chla$site <- "CHLA"
+chla$ptid <- NA
+chla$region <- "West"
+chla <- chla %>% filter(!(num_ab_tested<2))
+# fix one pt prepandemic who is listed as having COVID.
+chla[chla$Serum.glucose..random.==368 & chla$HbA1c==10.2,]$COVID.19.at.diagnosis <- "No"
+a <- chla[chla$Serum.glucose..random.==368 & chla$HbA1c==10.2,]
+
+jhu <- read.csv("./T2D and COVID/Data raw/DATA ENTRY Hopkins t2d CLEAN no PHI.csv")
+jhu$site <- "JHU"
+jhu$X <- NULL
+# remove 2 ppts per Risa
+jhu <- jhu %>% filter(!BMI %in% c(20.16,20.06))
+# missing ZnT8 data
+jhu$ZnT8.Ab <- ifelse(jhu$ZnT8.Ab=="","Not Tested",jhu$ZnT8.Ab)
+jhu$region <- "South"
+
+duke <- read.csv("./T2D and COVID/Data raw/DUKE_T2D_DATA.csv")
+duke$site <- "Duke"
+duke$ptid <- NA
+duke$region <- "South"
+duke <- duke %>% filter(!(num_ab_tested<2))
+
+ou <- read.csv("./T2D and COVID/Data raw/T2D and COVID Study Database 10Jul2021 DE-IDENTIFIED OU.csv")
+ou$site <- "OU"
+ou$ptid <- NA
+ou$region <- "South"
+
+mercy <- read.csv("./T2D and COVID/Data raw/T2D COVID - Children's Mercy Final Deidentified - Updates 11-12-21.csv")
+mercy$site <- "Mercy"
+mercy$ptid <- NA
+mercy$region <- "Midwest"
+
+cchmc <- read.csv("./T2D and COVID/Data raw/T2D COVID multisite template CCHMC.csv")
+cchmc$site <- "CCHMC"
+# exclude 2 ppts per Amy Shah
+cchmc <- cchmc %>% filter(!(BMI %in% c(20.52,24.8)))
+cchmc$region <- "Midwest"
+cchmc <- cchmc %>% filter(!(num_ab_tested<2))
+
+iu <- read.csv("./T2D and COVID/Data raw/T2D COVID multisite IU 8.27.2021.csv")
+iu$site <- "IU"
+# correct BMI
+iu$BMI <- ifelse(iu$BMI>300,31,iu$BMI)
+# remove 3 ppts with low BMI
+iu <- iu %>% filter(!(ptid %in% c(52,71,94)))
+iu$region <- "Midwest"
+
+ucsd <- read.csv("./T2D and COVID/Data raw/T2D COVID UCSD Rady Childrens 09012021 Deidentified.csv")
+ucsd$site <- "UCSD"
+ucsd$ptid <- NA
+# remove 3 ppts with low BMI
+ucsd <- ucsd %>% filter(!BMI %in% c(22.64,24.94,22.07))
+ucsd$region <- "West"
+ucsd <- ucsd %>% filter(!(num_ab_tested<2))
+
+cu <- read.csv("./T2D and COVID/Data raw/T2D COVID_CUAnschutz.csv")
+cu$site <- "Colorado"
+cu$region <- "West"
+
+brown <- read.csv("./T2D and COVID/Data raw/T2D COVIDdata_Brown.Hasbro.csv")
+brown$site <- "Brown/Hasbro"
+# need to get rid of decimal at the end of all ages
+brown$age_dx <- substr(brown$age_dx,1,nchar(brown$age_dx)-1)
+brown$age_dx <- ifelse(brown$age_dx=="14. 11","14.11",brown$age_dx)
+brown$region <- "Northeast"
+
+cnh <- read.csv("./T2D and COVID/Data raw/Children's National_ UPLOAD - Estrada - 10-29-21.csv")
+cnh$site <- "Children's National"
+# remove 2 ppts with low BMI
+#cnh <- cnh %>% filter(!ptid %in% c(160,238))
+# somehow I missed their ab variables were incorrect
+cnh$GAD65.Ab <- ifelse(cnh$GAD65.Ab=="Y","Negative","Not Tested")
+cnh$Insulin.Ab <- ifelse(cnh$Insulin.Ab=="Y","Negative","Not Tested")
+cnh$ICA.Ab <- ifelse(cnh$ICA.Ab=="Y","Negative","Not Tested")
+cnh$ZnT8.Ab <- ifelse(cnh$ZnT8.Ab=="Y","Negative","Not Tested")
+cnh$region <- "South"
+
+lurie <- read.csv("./T2D and COVID/Data raw/9_28_21_LurieUpload.csv")
+lurie$site <- "Lurie"
+# recode ab data per Sean Delacey
+lurie$GAD65.Ab <- ifelse(lurie$GAD65.Ab=="yes","Negative","Not Tested")
+lurie$Insulin.Ab <- ifelse(lurie$Insulin.Ab=="yes","Negative","Not Tested")
+lurie$ICA.Ab <- ifelse(lurie$ICA.Ab=="yes","Negative","Not Tested")
+lurie$ZnT8.Ab <- ifelse(lurie$ZnT8.Ab=="yes","Negative","Not Tested")
+lurie$region <- "Midwest"
+
+pennington <- read.csv("./T2D and COVID/Data raw/T2D COVID multisite template 10-15-2021 submitted to CO Pennington.csv")
+pennington$site <- "Pennington"
+# correct one BMI
+pennington$BMI <- ifelse(pennington$BMI==23.8,27,pennington$BMI)
+# delete one ppt
+pennington <- pennington %>% filter(!BMI==25.3)
+pennington$region <- "South"
+pennington <- pennington %>% filter(!(num_ab_tested<2))
+
+pennstate <- read.csv("./T2D and COVID/Data raw/T2D COVID PennStateUniversity data 10-2021.csv")
+pennstate$site <- "Penn State"
+# 6 patients data not fixed - need to exclude for now
+pennstate <- pennstate %>% filter(!(ptid %in% c("PSU006","PSU025","PSU026","PSU027","PSU101","PSU156")))
+pennstate$region <- "Northeast"
+pennstate <- pennstate %>% filter(!(num_ab_tested<2))
+
+tch <- read.csv("./T2D and COVID/Data raw/TCH Data-Uploaded 2nd version.csv",na.strings = c(""," ","N/A"))
+tch$site <- "TCH"
+# exclude 3 patients with BMI percentile <85
+tch <- tch %>% filter(!ptid %in% c("TCH-32","TCH-35","TCH-69"))
+tch$X <- NULL
+tch$ZnT8.Ab <- ifelse(tch$ZnT8.Ab=="Negaative","NEGATIVE",tch$ZnT8.Ab)
+tch$region <- "South"
+tch <- tch %>% filter(!(num_ab_tested<2))
+
+ucsf <- read.csv("./T2D and COVID/Data raw/T2D_COVID_UCSF_V2_10252021.csv")
+ucsf$site <- "UCSF"
+ucsf$ptid <- NA
+ucsf$region <- "West"
+ucsf <- ucsf %>% filter(!(num_ab_tested<2))
+# get rid of 6.5 year old
+ucsf <- ucsf %>% filter(!(age_dx==6.5))
+
+um <- read.csv("./T2D and COVID/Data raw/UM_T2D COVID multisite template 10.14.2021.csv")
+um$site <- "Michigan"
+# remove 1 ppt with low BMI
+um <- um %>% filter(!BMI==23.14)
+um$region <- "Midwest"
+um <- um %>% filter(!(num_ab_tested<2))
+
+utsw <- read.csv("./T2D and COVID/Data raw/UTSW COVID T2.csv")
+utsw$site <- "UTSW"
+# recode ab data per Olga Gupta
+utsw$GAD65.Ab <- ifelse(utsw$GAD65.Ab=="Y","Negative","Not Tested")
+utsw$Insulin.Ab <- ifelse(utsw$Insulin.Ab=="Y","Negative","Not Tested")
+utsw$ICA.Ab <- ifelse(utsw$ICA.Ab=="Y","Negative","Not Tested")
+utsw$ZnT8.Ab <- ifelse(utsw$ZnT8.Ab=="Y","Negative","Not Tested")
+# fix pH value
+utsw$pH <- ifelse(utsw$ptid==295,NA,utsw$pH)
+utsw$bicarbonate <- ifelse(utsw$ptid==295,15,utsw$bicarbonate)
+utsw$pH <- ifelse(utsw$ptid==295,7.18,utsw$pH)
+utsw$region <- "South"
+
+# read in Vanderbilt data - year was reported as 0, -1, -2 and month is missing
+vanderbilt <- read.csv("./T2D and COVID/Data raw/T2D COVID - Shoemaker - VUMC 9-2021.csv")
+vanderbilt$site <- "Vanderbilt"
+vanderbilt$mo_dx <- NA
+vanderbilt$ptid <- NA
+# need to fix VUMC data before assigning year and period
+vanderbilt$period <- ifelse(vanderbilt$site=="Vanderbilt" & vanderbilt$yr_dx==0,"3/1/20-2/28/21",
+                         ifelse(vanderbilt$site=="Vanderbilt" & vanderbilt$yr_dx==-1,"3/1/19-2/29/20",
+                                ifelse(vanderbilt$site=="Vanderbilt" & vanderbilt$yr_dx==-2,"3/1/18-2/28/19",NA)))
+vanderbilt$yr_dx <- ifelse(vanderbilt$site=="Vanderbilt",NA,vanderbilt$yr_dx)
+vanderbilt$region <- "South"
+vanderbilt <- vanderbilt %>% filter(!(num_ab_tested<2))
+
+# read in Peoria
+peoria <- read.csv("./T2D and COVID/Data raw/Peoria.Illinois.T2D COVID 19_2021-10-15_Validated_11.1.2021.1-De-identified.csv",
+                   na.strings = c("NULL",""," "))
+peoria$site <- "Peoria"
+# remove 1 ppt with low BMI
+peoria <- peoria %>% filter(!ptid==11)
+peoria$region <- "Midwest"
+
+# read in CHOP
+chop <- read.csv("./T2D and COVID/Data raw/Finalized Nov 1 T2D Covid CHOP All Years.csv")
+chop$site <- "CHOP"
+chop$X <- NULL
+chop$X.1 <- NULL
+# remove 4 patients at CHOP with BMIP<85 for now
+chop <- chop %>% filter(!(BMI %in% c(24.68,24.53,24.11,20.28)))
+chop$region <- "Northeast"
+
+# COMBINE DATA EXCEPT FOR VANDERBILT AND ADD PERIOD 
+alldata <- rbind(columbia,chicago,mayo,chla,jhu,duke,ou,mercy,cchmc,iu,ucsd,cu,brown,cnh,lurie,pennington,pennstate,tch,ucsf,um,utsw,peoria,chop)
+alldata$period <- NA
+alldata <- rbind(alldata,vanderbilt)
+
+#################
+# DATA CLEANING #
+#################
+
+# clean up cases
+alldata$GAD65.Ab <- toupper(alldata$GAD65.Ab)
+alldata$Insulin.Ab <- toupper(alldata$Insulin.Ab)
+alldata$ICA.Ab <- toupper(alldata$ICA.Ab)
+alldata$ZnT8.Ab <- toupper(alldata$ZnT8.Ab)
+alldata$sex <- toupper(alldata$sex)
+alldata$insurance <- toupper(alldata$insurance)
+alldata$Location.Diagnosis <- toupper(alldata$Location.Diagnosis)
+alldata$COVID.19.at.diagnosis <- toupper(alldata$COVID.19.at.diagnosis)
+alldata$Race <- toupper(alldata$Race)
+alldata$Ethnicity <- toupper(alldata$Ethnicity)
+
+# missing ab data
+#View(alldata[alldata$GAD65.Ab=="" | alldata$Insulin.Ab=="" | alldata$ICA.Ab=="" | alldata$ZnT8.Ab=="",])
+
+# clean up ab data
+alldata$GAD65.Ab <- ifelse(alldata$GAD65.Ab %in% c("NEGATIVE PREV POS 24,17 (<5)","NEGATIVE PREV POS 9.0 (<5.0)"),"NEGATIVE",alldata$GAD65.Ab)
+alldata$Insulin.Ab <- ifelse(alldata$Insulin.Ab=="NEGATIVE PREV POS 5.8 (<5)","NEGATIVE",alldata$Insulin.Ab)
+# calculate #ab negative and compare to reported number
+alldata$gad_check <- ifelse(alldata$GAD65.Ab=="NEGATIVE",1,0)
+alldata$ICA_check <- ifelse(alldata$ICA.Ab=="NEGATIVE",1,0)
+alldata$zn_check <- ifelse(alldata$ZnT8.Ab=="NEGATIVE",1,0)
+alldata$Insulin_check <- ifelse(alldata$Insulin.Ab=="NEGATIVE",1,0)
+temp <- alldata %>% dplyr::select(gad_check,ICA_check,Insulin_check,zn_check) %>% mutate(num_ab_check=gad_check+ICA_check+Insulin_check+zn_check,.keep="all")
+num_ab_check <- temp$num_ab_check
+alldata <- cbind(alldata,num_ab_check)
+alldata$num_ab_tested <- ifelse(alldata$num_ab_tested < alldata$num_ab_check,alldata$num_ab_check,alldata$num_ab_tested)
+
+abproblem <- alldata[alldata$num_ab_tested<2,]
+abproblem_cchmc <- abproblem %>% filter(site=="CCHMC")
+write.csv(abproblem_cchmc,"./T2D and COVID/Data clean/abcheck_cchmc.csv",row.names = F)
+abproblem_chla <- abproblem %>% filter(site=="CHLA")
+write.csv(abproblem_chla,"./T2D and COVID/Data clean/abcheck_chla.csv",row.names = F)
+abproblem_duke <- abproblem %>% filter(site=="Duke")
+write.csv(abproblem_duke,"./T2D and COVID/Data clean/abcheck_duke.csv",row.names = F)
+abproblem_michigan <- abproblem %>% filter(site=="Michigan")
+write.csv(abproblem_michigan,"./T2D and COVID/Data clean/abcheck_michigan.csv",row.names = F)
+abproblem_pennstate <- abproblem %>% filter(site=="Penn State")
+write.csv(abproblem_pennstate,"./T2D and COVID/Data clean/abcheck_pennstate.csv",row.names = F)
+abproblem_pennington <- abproblem %>% filter(site=="Pennington")
+write.csv(abproblem_pennington,"./T2D and COVID/Data clean/abcheck_pennington.csv",row.names = F)
+abproblem_tch <- abproblem %>% filter(site=="TCH")
+write.csv(abproblem_tch,"./T2D and COVID/Data clean/abcheck_tch.csv",row.names = F)
+abproblem_ucsd <- abproblem %>% filter(site=="UCSD")
+write.csv(abproblem_ucsd,"./T2D and COVID/Data clean/abcheck_UCSD.csv",row.names = F)
+abproblem_ucsf <- abproblem %>% filter(site=="UCSF")
+write.csv(abproblem_ucsf,"./T2D and COVID/Data clean/abcheck_UCSF.csv",row.names = F)
+abproblem_vanderbilt <- abproblem %>% filter(site=="Vanderbilt")
+write.csv(abproblem_vanderbilt,"./T2D and COVID/Data clean/abcheck_vanderbilt.csv",row.names = F)
+
+# filter out those with fewer than 2 ab tested for now - can add back individually as sites write back 
+alldata <- alldata %>% filter(!num_ab_tested<2 | site=="IU")
+
+# clean up race/ethnicity
+alldata$Race <- str_trim(alldata$Race)
+alldata$Ethnicity <- str_trim(alldata$Ethnicity)
+alldata$Race <- ifelse(alldata$Race %in% c("","Did not answer","DID NOT ANSWER","DECLINED","UNABLE TO OBTAIN","Unknown","HISPANIC"),"UNKNOWN",alldata$Race)
+alldata$Race <- ifelse(alldata$Race %in% c("BLACK OR AFRICAN AMERICAN","BLACK/AFRICAN AMERICAN"),"BLACK",alldata$Race)
+alldata$Race <- ifelse(alldata$Race %in% c("NATIVE AMERICAN/ESKIMO"),"OTHER",alldata$Race)
+alldata$Race <- ifelse(alldata$Race %in% c("WHITE OR CAUCASIAN"),"WHITE",alldata$Race)
+alldata$Ethnicity <- ifelse(alldata$Ethnicity %in% c("HISPANIC OR LATINO","HISPANIC/LATINO"),"HISPANIC",alldata$Ethnicity)
+alldata$Ethnicity <- ifelse(alldata$Ethnicity %in% c("","DID NOT ANSWER","DECLINED","UNABLE TO OBTAIN"),"UNKNOWN",alldata$Ethnicity)
+alldata$Ethnicity <- ifelse(alldata$Ethnicity %in% c("NON-HISPANIC","NON HISPANIC","NOT HISPANIC","NOT HISPANIC/LATINO","NOT HISPANIC/NOT LATINO","NOT HISPANIC OR LATINO"),
+                            "NON-HISPANIC",alldata$Ethnicity)
+
+# clean up insurance
+alldata$insurance <- ifelse(alldata$insurance=="NONE","UNINSURED",alldata$insurance)
+alldata$insurance <- ifelse(alldata$insurance %in% c("PUBIC","PUBILC","PUBLIC ","CHIP","CMC INDIGENT CARE","MEDICAID","MEDICAID MANAGED CARE",
+                                                     "OON MEDICAID"),"PUBLIC",alldata$insurance)
+alldata$insurance <- ifelse(alldata$insurance %in% c("","UNKNOWN"),"UNKNOWN",alldata$insurance)
+alldata$insurance <- ifelse(alldata$insurance %in% c("NONE/UNINSURED","SELF-PAY"),"UNINSURED",alldata$insurance)
+alldata$insurance <- ifelse(alldata$insurance %in% c("BLUE CROSS/BLUE SHIELD","COMMERCIAL","BC/BS"),"PRIVATE",alldata$insurance)
+alldata$insurance <- ifelse(alldata$insurance=="TRICARE","OTHER",alldata$insurance)
+
+# clean up BMI
+alldata$BMI <- ifelse(alldata$BMI %in% c("?","Not Available","Not Tested"),NA,alldata$BMI)
+alldata$BMI <- as.numeric(alldata$BMI)
+alldata$BMI <- ifelse(alldata$BMI>300,NA,alldata$BMI)
+
+# clean up A1c
+alldata$HbA1c <- str_trim(alldata$HbA1c)
+alldata$HbA1c <- ifelse(alldata$HbA1c %in% c("> 14",">14.0",">14"),14,alldata$HbA1c)
+alldata$HbA1c <- ifelse(alldata$HbA1c==">14.5",14.5,alldata$HbA1c)
+alldata$HbA1c <- ifelse(alldata$HbA1c %in% c("> 15",">15"),15,alldata$HbA1c)
+alldata$HbA1c <- ifelse(alldata$HbA1c=="> 15.5",15.5,alldata$HbA1c)
+alldata$HbA1c <- as.numeric(alldata$HbA1c)
+
+# clean up glucose 
+alldata$Serum.glucose..random. <- str_remove(alldata$Serum.glucose..random.," mg/dL")
+alldata$Serum.glucose..random. <- str_remove(alldata$Serum.glucose..random.," mg/dl")
+alldata$Serum.glucose..random. <- str_trim(alldata$Serum.glucose..random.)
+alldata$Serum.glucose..random. <- ifelse(alldata$Serum.glucose..random.==">400",400,alldata$Serum.glucose..random.)
+alldata$Serum.glucose..random. <- ifelse(alldata$Serum.glucose..random.==">500",500,alldata$Serum.glucose..random.)
+alldata$Serum.glucose..random. <- ifelse(alldata$Serum.glucose..random.==">600",600,alldata$Serum.glucose..random.)
+alldata$Serum.glucose..random. <- ifelse(alldata$Serum.glucose..random. %in% c(">700","> 700"),700,alldata$Serum.glucose..random.)
+alldata$Serum.glucose..random. <- ifelse(alldata$Serum.glucose..random.==">750",750,alldata$Serum.glucose..random.)
+alldata$Serum.glucose..random. <- ifelse(alldata$Serum.glucose..random.=="Not Tested",NA,alldata$Serum.glucose..random.)
+alldata$Serum.glucose..random. <- ifelse(alldata$Serum.glucose..random.=="1,001",1001,alldata$Serum.glucose..random.)
+alldata$Serum.glucose..random. <- ifelse(alldata$Serum.glucose..random.=="1,001",1001,alldata$Serum.glucose..random.)
+alldata$Serum.glucose..random. <- ifelse(alldata$Serum.glucose..random.=="1,163",1163,alldata$Serum.glucose..random.)
+alldata$Serum.glucose..random. <- ifelse(alldata$Serum.glucose..random.=="1,473",1473,alldata$Serum.glucose..random.)
+alldata$Serum.glucose..random. <- ifelse(alldata$Serum.glucose..random.=="1,191",1191,alldata$Serum.glucose..random.)
+alldata$Serum.glucose..random. <- ifelse(alldata$Serum.glucose..random. %in% c("","NULL"),NA,alldata$Serum.glucose..random.)
+alldata$Serum.glucose..random. <- as.numeric(alldata$Serum.glucose..random.)
+
+# clean up pH
+alldata$pH <- ifelse(alldata$pH %in% c("","-"),NA,alldata$pH)
+alldata$pH <- ifelse(alldata$pH=="Not Tested",NA,alldata$pH)
+alldata$pH <- ifelse(alldata$pH=="7.3Unknown",7.3,alldata$pH)
+alldata$pH <- ifelse(alldata$pH=="<7.01",7.01,alldata$pH)
+alldata$pH <- ifelse(alldata$pH=="349",3.49,alldata$pH)
+alldata$pH <- as.numeric(alldata$pH)
+
+# clean up bicarb
+alldata$bicarbonate <- ifelse(alldata$bicarbonate %in% c("<10","< 10"),10,alldata$bicarbonate)
+alldata$bicarbonate <- ifelse(alldata$bicarbonate=="<5",5,alldata$bicarbonate)
+alldata$bicarbonate <- ifelse(alldata$bicarbonate=="Not Tested",NA,alldata$bicarbonate)
+alldata$bicarbonate <- as.numeric(alldata$bicarbonate)
+
+# clean up osmolality
+alldata$Serum.osmolality <- ifelse(alldata$Serum.osmolality=="Not Tested",NA,alldata$Serum.osmolality)
+alldata$Serum.osmolality <- as.numeric(alldata$Serum.osmolality)
+
+# clean up age
+alldata$age_dx <- str_trim(alldata$age_dx)
+alldata$age_dx <- ifelse(alldata$age_dx=="12..75",12.75,alldata$age_dx)
+alldata$age_dx <- as.numeric(alldata$age_dx)
+
+# clean up sex
+alldata$sex <- ifelse(alldata$sex=="M","MALE",alldata$sex)
+alldata$sex <- ifelse(alldata$sex=="F","FEMALE",alldata$sex)
+alldata$sex <- ifelse(alldata$sex %in% c(""," "),"UNKNOWN",alldata$sex)
+
+# clean up COVID dx
+alldata$COVID.19.at.diagnosis <- ifelse(alldata$COVID.19.at.diagnosis %in% c("N","NEGATIVE","0"),"NO",alldata$COVID.19.at.diagnosis)
+alldata$COVID.19.at.diagnosis <- ifelse(alldata$COVID.19.at.diagnosis %in% c("ND","NOT TESTED"),"UNKNOWN",alldata$COVID.19.at.diagnosis)
+alldata$COVID.19.at.diagnosis <- ifelse(alldata$COVID.19.at.diagnosis %in% c("P","POSITIVE","1"),"YES",alldata$COVID.19.at.diagnosis)
+alldata$COVID.19.at.diagnosis <- ifelse(alldata$COVID.19.at.diagnosis %in% c(""," "),"UNKNOWN",alldata$COVID.19.at.diagnosis)
+
+# clean up location
+alldata$Location.Diagnosis <- ifelse(alldata$Location.Diagnosis %in% c(""," "),"UNKNOWN",alldata$Location.Diagnosis)
+alldata$Location.Diagnosis <- ifelse(alldata$Location.Diagnosis %in% c("INPATIENT-FLOOR","INPATIENT-ICU","IP"),"INPATIENT",alldata$Location.Diagnosis)
+alldata$Location.Diagnosis <- ifelse(alldata$Location.Diagnosis %in% c("OP","ED AND DISCHARGED"),"OUTPATIENT",alldata$Location.Diagnosis)
+
+# convert to factors
+alldata$mo_dx <- as.factor(as.character(alldata$mo_dx))
+alldata$yr_dx <- as.factor(as.character(alldata$yr_dx))
+
+# REMOVE AB POSITIVE PATIENTS!!!!!
+alldata <- alldata %>% filter(!(alldata$site=="Columbia" & alldata$GAD65.Ab==""))
+alldata <- alldata %>% filter(!(alldata$site=="CHLA" & alldata$GAD65.Ab=="POS"))
+
+# calculate BMI percentile
+alldata$bmip <- sds(alldata$BMI,
+              age = alldata$age_dx,
+              sex = alldata$sex, male = "MALE", female =  "FEMALE",
+              ref = cdc.ref,
+              item = "bmi",
+              type = "perc")
+
+# write file of BMI percentile <85th
+bmicheck <- alldata %>% filter(bmip<0.85)
+bmicheck$bmip <- bmicheck$bmip*100
+
+bmicheck_cchmc <- bmicheck %>% filter(site=="CCHMC")
+write.csv(bmicheck_cchmc,"./T2D and COVID/Data clean/bmicheck_cchmc.csv",row.names = F)
+
+bmicheck_chicago <- bmicheck %>% filter(site=="Chicago")
+write.csv(bmicheck_chicago,"./T2D and COVID/Data clean/bmicheck_chicago.csv",row.names = F)
+
+bmicheck_national <- bmicheck %>% filter(site=="Children's National")
+write.csv(bmicheck_national,"./T2D and COVID/Data clean/bmicheck_national.csv",row.names = F)
+
+bmicheck_chla <- bmicheck %>% filter(site=="CHLA")
+write.csv(bmicheck_chla,"./T2D and COVID/Data clean/bmicheck_chla.csv",row.names = F)
+
+bmicheck_colorado <- bmicheck %>% filter(site=="Colorado")
+write.csv(bmicheck_colorado,"./T2D and COVID/Data clean/bmicheck_colorado.csv",row.names = F)
+
+bmicheck_columbia <- bmicheck %>% filter(site=="Columbia")
+write.csv(bmicheck_columbia,"./T2D and COVID/Data clean/bmicheck_columbia.csv",row.names = F)
+
+bmicheck_duke <- bmicheck %>% filter(site=="Duke")
+write.csv(bmicheck_duke,"./T2D and COVID/Data clean/bmicheck_duke.csv",row.names = F)
+
+bmicheck_iu <- bmicheck %>% filter(site=="IU")
+write.csv(bmicheck_iu,"./T2D and COVID/Data clean/bmicheck_IU.csv",row.names = F)
+
+bmicheck_JHU <- bmicheck %>% filter(site=="JHU")
+write.csv(bmicheck_JHU,"./T2D and COVID/Data clean/bmicheck_JHU.csv",row.names = F)
+
+bmicheck_mayo <- bmicheck %>% filter(site=="Mayo")
+write.csv(bmicheck_mayo,"./T2D and COVID/Data clean/bmicheck_mayo.csv",row.names = F)
+
+bmicheck_michigan <- bmicheck %>% filter(site=="Michigan")
+write.csv(bmicheck_michigan,"./T2D and COVID/Data clean/bmicheck_michigan.csv",row.names = F)
+
+bmicheck_pennstate <- bmicheck %>% filter(site=="Penn State")
+write.csv(bmicheck_pennstate,"./T2D and COVID/Data clean/bmicheck_pennstate.csv",row.names = F)
+
+bmicheck_pennington <- bmicheck %>% filter(site=="Pennington")
+write.csv(bmicheck_pennington,"./T2D and COVID/Data clean/bmicheck_pennington.csv",row.names = F)
+
+bmicheck_tch <- bmicheck %>% filter(site=="TCH")
+write.csv(bmicheck_tch,"./T2D and COVID/Data clean/bmicheck_tch.csv",row.names = F)
+
+bmicheck_ucsd <- bmicheck %>% filter(site=="UCSD")
+write.csv(bmicheck_ucsd,"./T2D and COVID/Data clean/bmicheck_ucsd.csv",row.names = F)
+
+bmicheck_ucsf <- bmicheck %>% filter(site=="UCSF")
+write.csv(bmicheck_ucsf,"./T2D and COVID/Data clean/bmicheck_ucsf.csv",row.names = F)
+
+bmicheck_utsw <- bmicheck %>% filter(site=="UTSW")
+write.csv(bmicheck_utsw,"./T2D and COVID/Data clean/bmicheck_utsw.csv",row.names = F)
+
+bmicheck_peoria <- bmicheck %>% filter(site=="Peoria")
+
+bmicheck_chop <- bmicheck %>% filter(site=="CHOP")
+write.csv(bmicheck_chop,"./T2D and COVID/Data clean/bmicheck_chop.csv",row.names = F)
+
+bmicheck_vanderbilt <- bmicheck %>% filter(site=="Vanderbilt")
+
+# create combined race/eth variable
+alldata$race_eth <- ifelse(alldata$Ethnicity=="HISPANIC","HISPANIC",alldata$Race)
+# Black or not black
+alldata$race_eth_black <- ifelse(alldata$race_eth=="BLACK","BLACK","NOT BLACK")
+# white or not white
+alldata$race_eth_white <- ifelse(alldata$race_eth=="WHITE","WHITE","NOT WHITE")
+
+minage <- min(alldata$age_dx,na.rm = T)
+maxage <- max(alldata$age_dx,na.rm = T)
+
+# calculate %CDC95th
+ptab <- make_percentile_tab(ref=cdc.ref,item="bmi",perc = 95)
+ptab$sex <- toupper(ptab$sex)
+ptab$age_dx <- ptab$age
+ptab <- ptab[,c("sex","age_dx","perc_95_0")]
+ptab_m <- ptab[ptab$sex=="MALE",]
+ptab_f <- ptab[ptab$sex=="FEMALE",]
+
+# do a fuzzy left join by age at dx for males and females separately
+males <- alldata %>% filter(sex=="MALE")
+females <- alldata %>% filter(sex=="FEMALE")
+
+males$perc_95 = unlist(apply(males,1,function(r){
+  age = as.numeric(r["age_dx"])
+  p = ptab_m$perc_95_0[which.min(abs(ptab_m$age_dx - age))]
+  if(is.na(age)){p = NA}
+  return(p)
+}))
+
+females$perc_95 = unlist(apply(females,1,function(r){
+  age = as.numeric(r["age_dx"])
+  p = ptab_f$perc_95_0[which.min(abs(ptab_f$age_dx - age))]
+  if(is.na(age)){p = NA}
+  return(p)
+}))
+
+alldata <- rbind(males,females)
+
+# calculate percent of 95th percentile
+alldata$bmi_perc_of_95 <- ((alldata$BMI)/alldata$perc_95)*100
+
+##################
+# AIM 2 OUTCOMES #
+##################
+
+# DKA is pH<7.3 or bicarb<=15
+alldata$dka <- (!is.na(alldata$pH) & alldata$pH<7.3 & is.na(alldata$bicarbonate)) | 
+                (!is.na(alldata$bicarbonate) & alldata$bicarbonate<=15 & is.na(alldata$pH)) |
+                  (!is.na(alldata$bicarbonate) & !is.na(alldata$pH) & (alldata$pH<7.3 | alldata$bicarbonate<=15))
+#alldata$dka <- ifelse(is.na(alldata$pH) & is.na(alldata$bicarbonate),NA,alldata$dka)
+# if DKA is missing, set to none
+#alldata$dka <- ifelse(is.na(alldata$dka),FALSE,TRUE)
+
+# HHS is osmolality >=330 AND glucose >600
+alldata$hhs <- ifelse(alldata$Serum.glucose..random.>600 & alldata$Serum.osmolality>=330,TRUE,FALSE)
+alldata$hhs <- ifelse(is.na(alldata$hhs),FALSE,alldata$hhs)
+
+# metabolic decomp is DKA or HHS or both
+alldata$met_decomp <- alldata$dka | alldata$hhs
+
+# DKA severity
+# first code severity of pH
+alldata$pHsev <- ifelse(alldata$pH<7.1,"Severe",
+                        ifelse(alldata$pH<7.2,"Moderate",
+                               ifelse(alldata$pH<7.3,"Mild",NA)))
+alldata$bicarbsev <- ifelse(alldata$bicarbonate<5,"Severe",
+                        ifelse(alldata$bicarbonate<10,"Moderate",
+                               ifelse(alldata$bicarbonate<=15,"Mild",NA)))
+alldata$dka_severity <- NA
+alldata$dka_severity <- ifelse(alldata$pHsev=="Mild","Mild",alldata$dka_severity)
+alldata$dka_severity <- ifelse(!is.na(alldata$bicarbsev) & alldata$bicarbsev=="Mild","Mild",alldata$dka_severity)
+alldata$dka_severity <- ifelse(!is.na(alldata$pHsev) & alldata$pHsev=="Moderate","Moderate",alldata$dka_severity)
+alldata$dka_severity <- ifelse(!is.na(alldata$bicarbsev) & alldata$bicarbsev=="Moderate","Moderate",alldata$dka_severity)
+alldata$dka_severity <- ifelse(!is.na(alldata$pHsev) & alldata$pHsev=="Severe","Severe",alldata$dka_severity)
+alldata$dka_severity <- ifelse(!is.na(alldata$bicarbsev) & alldata$bicarbsev=="Severe","Severe",alldata$dka_severity)
+
+#######################
+# DEFINE TIME PERIODS #
+#######################
+
+alldata$day_dx <- 1
+alldata$dx_date <- as.Date(with(alldata, paste(yr_dx, mo_dx, day_dx,sep="-")), "%Y-%m-%d")
+
+alldata <- alldata[is.na(alldata$dx_date) | alldata$dx_date>=as.Date("2018-03-01"),]
+alldata <- alldata[is.na(alldata$dx_date) | alldata$dx_date<as.Date("2021-03-01"),]
+
+alldata$period <- ifelse(is.na(alldata$period) & alldata$dx_date>=as.Date("2018-03-01",format="%Y-%m-%d") & alldata$dx_date<=as.Date("2019-02-28",format="%Y-%m-%d"),"3/1/18-2/28/19",
+                         ifelse(is.na(alldata$period) & alldata$dx_date>=as.Date("2019-03-01",format="%Y-%m-%d") & 
+                                  alldata$dx_date<=as.Date("2020-02-29",format="%Y-%m-%d"),"3/1/19-2/29/20",
+                                ifelse(is.na(alldata$period) & alldata$dx_date>=as.Date("2020-03-01",format="%Y-%m-%d"),"3/1/20-2/28/21",alldata$period)))
+alldata$period <- as.factor(alldata$period)
+
+alldata$pandemic <- as.factor(ifelse(alldata$period=="3/1/20-2/28/21",1,0))
+
+#######################
+# CREATE TIME SERIES  #
+#######################
+
+# T2D cases
+ts1 <- alldata %>% group_by(dx_date) %>% tally()
+ts2 <- ts1$n
+ts3 <- ts(ts2,start = c(2018,3), end=c(2021,2),frequency=12)
+
+# met decomp
+md <- alldata %>% filter(met_decomp==TRUE)
+ts1_md <- md %>% group_by(dx_date) %>% tally()
+ts2_md <- ts1_md$n
+ts3_md <- ts(ts2_md,start = c(2018,3), end=c(2021,2),frequency=12)
+
+```
+
+# Background
+
+The purpose of this analysis is to examine the frequency of diagnosis of youth-onset type 2 diabetes during the COVID pandemic (defined as March 1, 2020-February 28, 2021) compared to prior to the pandemic (March 1, 2018-February 28, 2020).
+
+# Outstanding data issues/questions
+
+- CHOP and Vanderbilt data have been added to this report.  Vanderbilt data were excluded in any analyses requiring month of diagnosis.
+
+- Lorraine replied that the 4 patients at CHOP all had history of weight loss.  Two had prior BMIp >85th, one reported weight loss but no BMI available, and another reported 50 lb weight loss and subsequent BMIp >85th.  All are included in this version of the report.
+
+- Queries were sent to the sites regarding patients with <2 antibodies tested.  The 10 sites were CCHMC, CHLA, Duke, Michigan, Penn State, Pennington, TCH, UCSD, UCSF, and Vanderbilt.  Duke, TCH, CHLA, Vanderbilt, UCSF, UCSD, Michigan confirmed these patients should be excluded. CCHMC and Pennington provided antibody results for some patients and confirmed that others should be excluded.  Other sites are pending (data are included for now).
+
+- The negative binomial time series model is not an individual-level model, so can't test for interaction of sex and race.  Added log-linear model testing homogeneity of association of sex and race by pandemic.
+
+# Methods
+
+Lab values reported as either above or below the limit of detection were set to the limit of detection.  DKA was defined as either pH<7.3 or bicarbonate<=15.  HHS was defined as serum glucose >600 and osmolality >=330.  Metabolic decompensation was defined as either DKA or HHS.  DKA severity was defined as follows: 1) severe - pH <7.1 or bicarbonate <5, 2) moderate - pH <7.2 or bicarbonate <10, or 3) mild - pH <7.3 or bicarbonate <=15.
+
+Groups were compared using either a t-test or ANOVA for normally distributed continuous variables, the Kruskal Wallis test for non-normally distributed variables, and the chi-square test for categorical variables.  
+
+A negative binomial time series model was used to model the count of youth-onset T2D diagnoses per month.  A background linear trend of 5% increase per year was assumed. Seasonality was assessed by allowing the number of diagnoses in a particular month to depend on the number in the prior month, and the number 12 months prior; however, the amount of seasonality was minimal.  Because there appeared to be a peak in the number of diagnoses in August during the first 2 years, less so in the 3rd year, a covariate corresponding to August vs. other months was tested but was not significant.  The final model did not include any effect of seasonality.  A test of intervention was performed to determine whether the onset of the pandemic in March 1, 2020, had a significant effect on the count of diagnoses.
+
+# Results
+
+## Summary of missing observations
+
+### All years combined
+
+```{r include=TRUE, comment=""}
+skim(alldata)
+```
+
+### 3/1/18-2/28/19
+
+```{r include=TRUE, comment=""}
+skim(alldata[alldata$period=="3/1/18-2/28/19",])
+```
+
+### 3/1/19-2/29/20 
+
+```{r include=TRUE, comment=""}
+skim(alldata[alldata$period=="3/1/19-2/29/20",])
+```
+
+### 3/1/20-2/28/21
+
+```{r include=TRUE, comment=""}
+skim(alldata[alldata$period=="3/1/20-2/28/21",])
+```
+
+The minimum age was `r minage` and the maximum age was `r maxage`.
+
+```{r include=FALSE}
+vars <- c("site","region","mo_dx","yr_dx","period","num_ab_tested","GAD65.Ab","ICA.Ab","Insulin.Ab","ZnT8.Ab",
+          "age_dx","Race","Ethnicity","race_eth","race_eth_black","race_eth_white","sex","insurance","Location.Diagnosis","COVID.19.at.diagnosis","BMI",
+          "bmip","bmi_perc_of_95","HbA1c","Serum.glucose..random.","pH","bicarbonate","Serum.osmolality","dka","hhs","met_decomp","dka_severity")
+
+t1 <- CreateTableOne(data=alldata,vars = vars)
+t1 <- print(t1,nonnormal = c("BMI","bmip","HbA1c","Serum.glucose..random.","pH","bicarbonate","Serum.osmolality"),showAllLevels=T)
+```
+
+## Overall descriptive statistics
+
+```{r echo=FALSE}
+kable(t1,caption = "Overall descriptive statistics")
+```
+<br>
+
+```{r include=FALSE}
+
+t2 <- CreateTableOne(data=alldata,vars = vars,strata = "pandemic")
+t2 <- print(t2,nonnormal = c("BMI","bmip","HbA1c","Serum.glucose..random.","pH","bicarbonate","Serum.osmolality"),showAllLevels=T)
+```
+
+## Descriptive statistics before and during pandemic
+
+```{r echo=FALSE}
+kable(t2)
+```
+<br>
+
+## Descriptive statistics by site
+
+```{r include=FALSE}
+vars <- c("mo_dx","yr_dx","period","num_ab_tested","GAD65.Ab","ICA.Ab","Insulin.Ab","ZnT8.Ab",
+          "age_dx","Race","Ethnicity","race_eth","race_eth_black","race_eth_white","sex","insurance","Location.Diagnosis",
+          "COVID.19.at.diagnosis","BMI","bmip","bmi_perc_of_95","HbA1c","Serum.glucose..random.","pH","bicarbonate","Serum.osmolality","dka","hhs",
+          "met_decomp","dka_severity")
+
+t3 <- CreateTableOne(data=alldata,vars = vars,strata="site",test = FALSE)
+t3 <- print(t3,nonnormal = c("BMI","bmip","HbA1c","Serum.glucose..random.","pH","bicarbonate","Serum.osmolality"),showAllLevels=T)
+```
+
+```{r echo=FALSE}
+kable(t3)
+```
+<br>
+
+## Site by pandemic
+
+```{r include=FALSE}
+t3a <- CreateTableOne(data=alldata,vars = "site",strata="pandemic")
+t3a <- print(t3a,showAllLevels=T)
+```
+
+```{r echo=FALSE}
+kable(t3a)
+```
+<br>
+
+## Descriptive statistics by year
+
+```{r include=FALSE}
+vars <- c("site","region","mo_dx","num_ab_tested","GAD65.Ab","ICA.Ab","Insulin.Ab","ZnT8.Ab",
+          "age_dx","Race","Ethnicity","race_eth","race_eth_black","race_eth_white","sex","insurance","Location.Diagnosis",
+          "COVID.19.at.diagnosis","BMI","bmip","bmi_perc_of_95","HbA1c","Serum.glucose..random.","pH","bicarbonate","Serum.osmolality","dka",
+          "hhs","met_decomp","dka_severity")
+
+t4 <- CreateTableOne(data=alldata,vars = vars,strata="period")
+t4 <- print(t4,nonnormal = c("BMI","bmip","HbA1c","Serum.glucose..random.","pH","bicarbonate","Serum.osmolality"),showAllLevels=T)
+```
+
+```{r echo=FALSE}
+kable(t4)
+```
+<br>
+
+## Sex by race
+
+### All data combined
+
+```{r include=FALSE}
+t5 <- CreateTableOne(data=alldata,vars = "sex",strata="race_eth")
+t5 <- print(t5,showAllLevels=T)
+```
+
+```{r echo=FALSE}
+kable(t5)
+```
+
+### Pre-pandemic
+
+```{r include=FALSE}
+t6 <- CreateTableOne(data=alldata[alldata$pandemic==0,],vars = "sex",strata="race_eth")
+t6 <- print(t6,showAllLevels=T)
+```
+
+```{r echo=FALSE}
+kable(t6)
+```
+
+### Post-pandemic
+
+```{r include=FALSE}
+t7 <- CreateTableOne(data=alldata[alldata$pandemic==1,],vars = "sex",strata="race_eth")
+t7 <- print(t7,showAllLevels=T)
+```
+
+```{r echo=FALSE}
+kable(t7)
+```
+
+### Log-linear model testing interaction of sex, race/ethnicity, pandemic
+
+Using the Woolf test for homogeneity of association, there is no evidence that the association of sex and race/ethnicity is different pre- and post-pandemic.
+
+```{r include=TRUE, comment=""}
+x <- xtabs( ~ sex+race_eth+pandemic, alldata)
+wt <- woolf_test(x)
+print(wt)
+```
+
+## Figure
+
+```{r echo=FALSE}
+ggplot(alldata, aes(x=dx_date, fill=met_decomp)) + geom_bar() + geom_vline(xintercept = as.Date("03-01-2020",format="%m-%d-%Y"),linetype="dashed",size=1.2)+ ylab("New diagnoses of T2D") + xlab("") + labs(fill="") + scale_fill_discrete(labels=c("No metabolic decompensation","Metabolic decompensation")) + scale_x_date(date_labels = "%m-%Y",date_breaks = "1 month") + theme(axis.text.x = element_text(angle = 90)) 
+```
+
+## Model diagnostics - T2D cases
+
+```{r echo=FALSE}
+fit_poisson <- tsglm(ts3,distr = "poisson")
+fit_nb <- tsglm(ts3,distr = "nbinom")
+
+acf(residuals(fit_poisson))
+acf(residuals(fit_nb))
+
+pit(fit_poisson, main="PIT Poisson")
+pit(fit_nb, main="PIT NB")
+
+marcal(fit_poisson, main = "Marginal calibration")
+  lines(marcal(fit_nb, plot = FALSE), lty = "dashed")
+  legend("bottomright", legend = c("Pois", "NegBin"), lwd = 1, lty = c("solid", "dashed"))
+# NB model is better
+```
+<br>
+
+## Model results - T2D cases
+
+The parameter estimate corresponding to the test of intervention is labeled "interv_1."  It can be interpreted as the additive effect of the intervention, although interpretation is complicated by the fact that the additive effect enters the dynamic process and is no longer strictly additive.  
+
+```{r echo=FALSE,comment=""}
+set.seed(3654)
+
+# model with dependence on prior month and 12 months past to model seasonality
+preds <- cbind(ts3,linearTrend=(seq(along=ts3)*(0.15/36)))
+preds <- preds[,-1]
+fit_nb1 <- tsglm(ts3,distr = "nbinom",model = list(past_obs=c(1,12)),xreg=preds)
+a <- summary(fit_nb1,B=100)
+# seasonality as represented by beta_12 is small
+
+# now include a term for month to capture seasonality
+# I don't think there is a good method for a factor predictor
+#preds <- cbind(ts3,months=as.factor(rep(c("Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb"),3)),
+#               linearTrend=(seq(along=ts3)*(0.15/36)))
+#preds <- preds[,-1]
+#fit_nb1 <- tsglm(ts3,distr = "nbinom",model = list(past_obs=c(1,12)),xreg=preds)
+#a <- summary(fit_nb1,B=100)
+
+# can we simplify to August vs. no August
+preds <- cbind(ts3,aug=as.factor(rep(c(0,0,0,0,0,1,0,0,0,0,0,0),3)),
+               linearTrend=(seq(along=ts3)*(0.15/36)))
+preds <- preds[,-1]
+fit_nb1 <- tsglm(ts3,distr = "nbinom",model = list(past_obs=c(1,12)),xreg=preds)
+a <- summary(fit_nb1,B=100)
+# effect of August does not appear to be important, although could be washed out by the last year
+# could try a model with an interaction between pre/post pandemic and August
+# although if we are really interested in August, need more pre pandemic data
+
+# remove seasonality
+# make sure linear trend is right
+# beta is dependence on prior value, eta is dependence on covariates (I think), and sigmasq is overdispersion coefficient
+preds <- cbind(ts3,linearTrend=((seq(along=ts3)-1)*(0.15/36))+rep(1,36))
+preds <- preds[,-1]
+fit_nb1 <- tsglm(ts3,distr = "nbinom",model = list(past_obs=1),xreg=preds)
+colnames(fit_nb1$xreg) <- "linearTrend"
+a <- summary(fit_nb1,B=100)
+# test of intervention
+interv_test(fit_nb1,tau=24,delta=1,est_interv=T)
+
+```
+
+## Model results - Metabolic decompensation
+
+The parameter estimate corresponding to the test of intervention is labeled "interv_1."  It can be interpreted as the additive effect of the intervention, although interpretation is complicated by the fact that the additive effect enters the dynamic process and is no longer strictly additive.  
+
+```{r echo=FALSE,comment=""}
+set.seed(3654)
+
+# model with dependence on prior month and 12 months past to model seasonality
+preds_md <- cbind(ts3_md,linearTrend=(seq(along=ts3_md)*(0.15/36)))
+preds_md <- preds_md[,-1]
+fit_nb1_md <- tsglm(ts3_md,distr = "nbinom",model = list(past_obs=c(1,12)),xreg=preds_md)
+a_md <- summary(fit_nb1_md,B=100)
+# seasonality as represented by beta_12 is small
+
+# remove seasonality
+# make sure linear trend is right
+# beta is dependence on prior value, eta is dependence on covariates (I think), and sigmasq is overdispersion coefficient
+preds_md <- cbind(ts3_md,linearTrend=((seq(along=ts3_md)-1)*(0.15/36))+rep(1,36))
+preds_md <- preds_md[,-1]
+fit_nb1_md <- tsglm(ts3_md,distr = "nbinom",model = list(past_obs=1),xreg=preds_md)
+colnames(fit_nb1_md$xreg) <- "linearTrend"
+a_md <- summary(fit_nb1_md,B=200)
+# test of intervention
+interv_test(fit_nb1_md,tau=24,delta=1,est_interv=T)
+
+```
+
+
+
