@@ -1,0 +1,11 @@
+Adding To Shared Resources:
+1. Select most appropriate shell category for your project. 
+2. Select (or create) topic folder most appopriate for project
+3. Select (or create) code type file (R, SAS, Python)
+4. Create New Sub-Folder w/ your name + brief description. Include w/in file:
+	- a Read.me (preferrrably a .txt file for easier searching) describing what is included
+	- Code files 
+	- A sample report/results section to illustrate use of code/models
+
+
+Summary structure for new files 'shell category -> topic -> code type -> person + project -> code + read.me + report'
