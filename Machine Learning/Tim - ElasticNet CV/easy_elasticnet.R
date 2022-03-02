@@ -66,8 +66,6 @@ easy_glinternet = function(data,outcome,predictors,binom = F,metric = NULL,
     selected = as.matrix(coef(mod))
     selected = rownames(selected)[selected[,1] != 0]
     selected = selected[selected != "(Intercept)"]
-    # Rename
-    selected = predictors[match(selected,preds)]
     return(selected)
   })
   names(mods) = NULL
