@@ -1,6 +1,3 @@
-# For testing
-load("/Volumes/PEDS/RI Biostatistics Core/Shared/Shared Projects/Laura/BDC/Projects/Janet Snell-Bergeon/AHA collaborative grant/aha_master_data_no_snps.Rdata")
-
 # This is a function for performing cross validation (CV) to select an optimal model 
 # using the ElasticNet. By default uses leave one out (LOO) CV, but k-fold CV
 # can also be used by setting cv_method = "cv" and folds = k. See the trainControl 
