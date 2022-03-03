@@ -6,7 +6,7 @@ load("/Volumes/PEDS/RI Biostatistics Core/Shared/Shared Projects/Laura/BDC/Proje
 # out = "min.error" produces the model with the lowest CV error, and 
 # out = "1se.error" produces all "acceptable" models (CV error within 
 # 1 standard error of the minimum). 
-easy_glinternet = function(data,outcome,predictors,
+easy_elasticnet = function(data,outcome,predictors,
                            n_alphas = 10,n_lambdas = 100,max_coef = NULL,
                            model_type = "gaussian",time = NULL,
                            cv_method = "loo",folds = NULL,out = "min.error",
