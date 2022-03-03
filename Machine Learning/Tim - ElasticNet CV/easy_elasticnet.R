@@ -1,17 +1,20 @@
 load("/Volumes/PEDS/RI Biostatistics Core/Shared/Shared Projects/Laura/BDC/Projects/Janet Snell-Bergeon/AHA collaborative grant/aha_master_data_no_snps.Rdata")
 # This is a function for performing cross validation (CV) to select an optimal model 
 # using the ElasticNet. By default uses leave one out (LOO) CV, but k-fold CV
-# can also be used by setting cv_method = "cv" and folds = k. See the trainControl 
+# can also be used by setting cv_method = "kfold" and folds = k. See the trainControl 
 # function in caret for additional details. There are two options for the output:
 # out = "min.error" produces the model with the lowest CV error, and 
 # out = "1se.error" produces all "acceptable" models (CV error within 
 # 1 standard error of the minimum). 
 easy_glinternet = function(data,outcome,predictors,
-                           n_alphas = 10,n_lambdas = 100,
+                           n_alphas = 10,n_lambdas = 100,max_coef = NULL,
                            model_type = "gaussian",time = NULL,
-                           cv_method = "LOOCV",folds = NULL){
+                           cv_method = "loo",folds = NULL,out = "min.error",
+                           cores = 4,seed = 1017){
   require(ensr)
   df = data
+  # Random seed
+  set.seed(seed)
   # Fix names if necessary
   colnames(df) = make.names(colnames(df),unique = T,allow_ = F)
   preds = make.names(predictors,unique = T,allow_ = F)
@@ -35,15 +38,31 @@ easy_glinternet = function(data,outcome,predictors,
     Y = as.numeric(Y[idx])
   }
   # CV parameters
-  if(cv_method == "LOOCV"){folds = nrow(X)}
+  if(cv_method == "loo"){
+    folds = nrow(X)
+  } else if (cv_method != "kfold"){
+    stop("Please select either LOO or k-fold CV. If you are selecting k-fold CV, please specify the number of folds.")
+  }
+  # Parallel - recommended
+  if(!is.null(cores)){
+    require(doParallel)
+    p = TRUE
+    registerDoParallel(cores)
+  } else {p = FALSE}
   # Grid search with glmnet - super slow
   e = ensr(x = X,y = Y,alphas = seq(0, 1, length = n_alphas),nlambda = n_lambdas,
-           family = model_type,nfolds = folds,grouped=FALSE)
+           family = model_type,nfolds = folds,grouped=FALSE,parallel = p)
   # Get alpha and lambdas
   res = summary(e)
   min_err = min(res$cvm,na.rm = T)
   se_err = sd(res$cvm,na.rm = T)/sqrt(sum(!is.na(res$cvm)))
-  good_mods = which(res$cvm <= (min_err + se_err))
+  if (out == "min.error"){
+    good_mods = which.min(res$cvm)
+  } else if (out == "1se.error" & !is.null(max_coef)){
+    good_mods = which(res$cvm <= (min_err + se_err) & res$nzero <= max_coef)
+  } else if (out == "1se.error"){
+    good_mods = which(res$cvm <= (min_err + se_err))
+  }
   params = data.frame(res[good_mods,])
   # Refit models to get selected parameters (the coef() function output for caret is confusing)
   mods = apply(params,1,function(r){
@@ -53,8 +72,16 @@ easy_glinternet = function(data,outcome,predictors,
     selected = as.matrix(coef(mod))
     selected = rownames(selected)[selected[,1] != 0]
     selected = selected[selected != "(Intercept)"]
+    selected
     return(selected)
   })
   names(mods) = NULL
+  if(is.list(mods)){
+    mods = mods[lapply(mods,length)>0]
+  } else {
+    m = as.vector(mods)
+    mods = list()
+    mods[[1]] = m
+  }
   return(mods)
 }
