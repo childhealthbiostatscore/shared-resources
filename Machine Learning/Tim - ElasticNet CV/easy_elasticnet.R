@@ -1,36 +1,42 @@
+load("/Volumes/PEDS/RI Biostatistics Core/Shared/Shared Projects/Laura/BDC/Projects/Janet Snell-Bergeon/AHA collaborative grant/aha_master_data_no_snps.Rdata")
 # This is a function for performing cross validation (CV) to select an optimal model 
 # using the ElasticNet. By default uses leave one out (LOO) CV, but k-fold CV
 # can also be used by setting cv_method = "cv" and folds = k. See the trainControl 
 # function in caret for additional details. There are two options for the output:
 # out = "min.error" produces the model with the lowest CV error, and 
 # out = "1se.error" produces all "acceptable" models (CV error within 
-# 1 standard error of the minimum). By default RMSE is the metric used for 
-# continuous variables, and accuracy for binary, but different metrics can be 
-# specified with the metric argument. Variables must be formatted correctly
-# (e.g. sex as a factor variable) for this to work properly! The only exception 
-# is that outcomes will automatically be converted to factor variables if binom = T.
-easy_glinternet = function(data,outcome,predictors,binom = F,metric = NULL,
-                           cv_method = "LOOCV",folds = NULL,na = "na.omit",
-                           out = "min.error"){
-  require(caret)
-  require(glmnet)
+# 1 standard error of the minimum). 
+easy_glinternet = function(data,outcome,predictors,
+                           n_alphas = 100,n_lambdas = 100,
+                           model_type = "gaussian",time = NULL,
+                           cv_method = "LOOCV",folds = NULL){
+  require(ensr)
   df = data
-  # Make outcome binary if necessary
-  if(binom){
-    df[,outcome] = as.factor(df[,outcome])
-    if(is.null(metric)){
-      metric = "Accuracy"
-    }
-  }
-  if(is.null(metric)){
-    metric = "RMSE"
-  }
-  # CV
-  cv = trainControl(method = cv_method,number = folds)
-  # Model formula
   # Fix names if necessary
   colnames(df) = make.names(colnames(df),unique = T,allow_ = F)
   preds = make.names(predictors,unique = T,allow_ = F)
+  if(model_type == "survival"){
+    require(survival)
+    # Make regression matrices
+    Y = cbind(time = df[,time], status = df[,outcome])
+    X = df[,preds]
+    # Complete cases
+    idx = intersect(which(complete.cases(Y)),which(complete.cases(X)))
+    X = data.matrix(X[idx,])
+    Y = data.matrix(Y[idx,])
+    # CV parameters
+    if(cv_method = "LOOCV"){folds = nrow(X)}
+    # Grid search with glmnet - super slow (likely because survival package is slow)
+    e = ensr(x = X,y = Y,alphas = seq(0, 1, length = n_alphas),nlambda = n_lambdas,
+             family = "cox",nfolds = folds)
+  }
+  
+  
+  
+  # CV
+  cv = trainControl(method = cv_method,number = folds)
+  # Model formula
+  
   f = as.formula(paste0(outcome,"~",paste0(preds,collapse = "+")))
   # Train model
   t = train(f,data = df,method = "glmnet",na.action = na)
