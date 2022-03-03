@@ -19,16 +19,20 @@ easy_elasticnet = function(data,outcome,predictors,
   colnames(df) = make.names(colnames(df),unique = T,allow_ = F)
   preds = make.names(predictors,unique = T,allow_ = F)
   # Predictor matrix
-  X = df[,preds]
+  X = data.frame(df[,preds])
   # Outcome matrix depending on model type
   if(model_type == "cox"){
-    require(survival)
     # Outcome matrix
     Y = cbind(time = df[,time], status = df[,outcome])
     # Complete cases
     idx = intersect(which(complete.cases(Y)),which(complete.cases(X)))
     X = data.matrix(X[idx,])
     Y = data.matrix(Y[idx,])
+    # Remove variables without any variance
+    near_zero = caret::nearZeroVar(X)
+    if(length(near_zero)>0){
+      X = X[,-near_zero]
+    }
   } else if (model_type == "binomial" | model_type == "gaussian"){
     # Outcome matrix
     Y = df[,outcome]
@@ -36,6 +40,11 @@ easy_elasticnet = function(data,outcome,predictors,
     idx = intersect(which(complete.cases(Y)),which(complete.cases(X)))
     X = data.matrix(X[idx,])
     Y = as.numeric(Y[idx])
+    # Remove variables without any variance
+    near_zero = caret::nearZeroVar(X)
+    if(length(near_zero)>0){
+      X = X[,-near_zero]
+    }
   }
   # CV parameters
   if(cv_method == "loo"){
@@ -72,7 +81,7 @@ easy_elasticnet = function(data,outcome,predictors,
     selected = as.matrix(coef(mod))
     selected = rownames(selected)[selected[,1] != 0]
     selected = selected[selected != "(Intercept)"]
-    selected
+    selected = predictors[match(selected,preds)]
     return(selected)
   })
   names(mods) = NULL
