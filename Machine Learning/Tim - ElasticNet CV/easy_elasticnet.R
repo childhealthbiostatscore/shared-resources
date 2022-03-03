@@ -58,8 +58,12 @@ easy_elasticnet = function(data,outcome,predictors,
     p = TRUE
     registerDoParallel(cores)
   } else {p = FALSE}
+  # Add variables to global environment. Something about ensr doesn't work with 
+  # function in function variable scoping.
+  list2env(list(X=X,Y=Y,n_alphas=n_alphas,n_lambdas=n_lambdas,
+                model_type=model_type,folds=folds,p=p),.GlobalEnv)
   # Grid search with glmnet - super slow
-  e = ensr(x = X,y = Y,alphas = seq(0, 1, length = n_alphas),nlambda = n_lambdas,
+  e = ensr(X,Y,alphas = seq(0, 1, length = n_alphas),nlambda = n_lambdas,
            family = model_type,nfolds = folds,grouped=FALSE,parallel = p)
   # Get alpha and lambdas
   res = summary(e)
@@ -92,5 +96,8 @@ easy_elasticnet = function(data,outcome,predictors,
     mods = list()
     mods[[1]] = m
   }
+  # Remove variables from global environment, just in case
+  rm(X,Y,n_alphas,n_lambdas,model_type,folds,p,envir = .GlobalEnv)
+  # Return selected variables
   return(mods)
 }
