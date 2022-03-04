@@ -17,6 +17,7 @@ easy_elasticnet = function(data,outcome,predictors,
   # Fix names if necessary
   colnames(df) = make.names(colnames(df),unique = T,allow_ = F)
   preds = make.names(predictors,unique = T,allow_ = F)
+  outcome = make.names(outcome,unique = T,allow_ = F)
   # Predictor matrix
   X = data.frame(df[,preds])
   # Outcome matrix depending on model type
@@ -63,7 +64,7 @@ easy_elasticnet = function(data,outcome,predictors,
                 model_type=model_type,folds=folds,p=p),.GlobalEnv)
   # Grid search with glmnet - super slow
   e = ensr(X,Y,alphas = seq(0, 1, length = n_alphas),nlambda = n_lambdas,
-           family = model_type,nfolds = folds,grouped=FALSE,parallel = p)
+           family = model_type,nfolds = folds,parallel = p)
   # Get alpha and lambdas
   res = summary(e)
   min_err = min(res$cvm,na.rm = T)
