@@ -61,23 +61,27 @@ easy_elasticnet = function(data,outcome,predictors,
   # Add variables to global environment. Something about ensr doesn't work with 
   # function in function variable scoping.
   list2env(list(X=X,Y=Y,n_alphas=n_alphas,n_lambdas=n_lambdas,
-                model_type=model_type,folds=folds,p=p),.GlobalEnv)
+                model_type=model_type,folds=folds,p=p,max_coef=max_coef),.GlobalEnv)
   # Grid search with glmnet - super slow
-  e = ensr(X,Y,alphas = seq(0, 1, length = n_alphas),nlambda = n_lambdas,
-           family = model_type,nfolds = folds,parallel = p)
+  if(!is.null(max_coef)){
+    e = ensr(X,Y,alphas = seq(0, 1, length = n_alphas),nlambda = n_lambdas,
+             family = model_type,nfolds = folds,parallel = p,pmax = max_coef)
+  } else {
+    e = ensr(X,Y,alphas = seq(0, 1, length = n_alphas),nlambda = n_lambdas,
+             family = model_type,nfolds = folds,parallel = p)
+  }
   # Get alpha and lambdas
   res = summary(e)
   min_err = min(res$cvm,na.rm = T)
   se_err = sd(res$cvm,na.rm = T)/sqrt(sum(!is.na(res$cvm)))
   if (out == "min.error"){
     good_mods = which.min(res$cvm)
-  } else if (out == "1se.error" & !is.null(max_coef)){
-    good_mods = which(res$cvm <= (min_err + se_err) & res$nzero <= max_coef)
   } else if (out == "1se.error"){
     good_mods = which(res$cvm <= (min_err + se_err))
   }
   params = data.frame(res[good_mods,])
-  params = params[which.min(params$nzero),]
+  params = params[which(params$nzero == min(params$nzero)),]
+  params = params[which.min(params$cvm),]
   # Refit models to get selected parameters (the coef() function output for caret is confusing)
   a = params$alpha
   l = params$lambda
