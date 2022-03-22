@@ -5,7 +5,7 @@
 # out = "min.error" produces the model with the lowest CV error, and 
 # out = "1se.error" produces all "acceptable" models (CV error within 
 # 1 standard error of the minimum). 
-easy_elasticnet = function(data,outcome,predictors,
+easy_lasso = function(data,outcome,predictors,
                            n_lambdas = 100,max_coef = NULL,
                            model_type = "gaussian",time = NULL,
                            cv_method = "loo",folds = NULL,out = "min.error",
@@ -61,29 +61,14 @@ easy_elasticnet = function(data,outcome,predictors,
   # glmnet
   lasso_cv = cv.glmnet(X,Y,family = model_type,nfolds = folds,parallel = p)
   # Refit models to get selected parameters
-  
-  
-  
-  mods = apply(params,1,function(r){
-    a = as.numeric(r["alpha"])
-    l = as.numeric(r["lambda"])
-    mod = glmnet(y = Y,x = X,alpha = a,lambda = l,family = model_type)
-    selected = as.matrix(coef(mod))
-    selected = rownames(selected)[selected[,1] != 0]
-    selected = selected[selected != "(Intercept)"]
-    selected = predictors[match(selected,preds)]
-    return(selected)
-  })
-  names(mods) = NULL
-  if(is.list(mods)){
-    mods = mods[lapply(mods,length)>0]
-  } else {
-    m = as.vector(mods)
-    mods = list()
-    mods[[1]] = m
+  if(out == "min.error"){
+    l = lasso_cv$lambda.min
+  } else if (out == "1se.error"){
+    l = lasso_cv$lambda.1se
   }
-  # Remove variables from global environment, just in case
-  rm(X,Y,n_alphas,n_lambdas,model_type,folds,p,envir = .GlobalEnv)
-  # Return selected variables
-  return(mods)
+  # Return coefficients
+  mod = glmnet(X,Y,family = model_type,parallel = p,lambda = l)
+  c = coef(mod)
+  c = rownames(c)[which(c != 0 & rownames(c) != "(Intercept)")]
+  return(c)
 }
