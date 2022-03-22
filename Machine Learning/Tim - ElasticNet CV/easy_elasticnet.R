@@ -8,8 +8,8 @@
 easy_elasticnet = function(data,outcome,predictors,
                            n_alphas = 10,n_lambdas = 100,max_coef = NULL,
                            model_type = "gaussian",time = NULL,
-                           cv_method = "loo",folds = NULL,out = "min.error",
-                           cores = 4,seed = 1017){
+                           cv_method = "loo",folds = NULL,out = "1se.error",
+                           cores = 36,seed = 1017){
   require(ensr)
   df = data
   # Random seed
@@ -77,27 +77,17 @@ easy_elasticnet = function(data,outcome,predictors,
     good_mods = which(res$cvm <= (min_err + se_err))
   }
   params = data.frame(res[good_mods,])
+  params = params[which.min(params$nzero),]
   # Refit models to get selected parameters (the coef() function output for caret is confusing)
-  mods = apply(params,1,function(r){
-    a = as.numeric(r["alpha"])
-    l = as.numeric(r["lambda"])
-    mod = glmnet(y = Y,x = X,alpha = a,lambda = l,family = model_type)
-    selected = as.matrix(coef(mod))
-    selected = rownames(selected)[selected[,1] != 0]
-    selected = selected[selected != "(Intercept)"]
-    selected = predictors[match(selected,preds)]
-    return(selected)
-  })
-  names(mods) = NULL
-  if(is.list(mods)){
-    mods = mods[lapply(mods,length)>0]
-  } else {
-    m = as.vector(mods)
-    mods = list()
-    mods[[1]] = m
-  }
+  a = params$alpha
+  l = params$lambda
+  mod = glmnet(y = Y,x = X,alpha = a,lambda = l,family = model_type)
+  selected = as.matrix(coef(mod))
+  selected = rownames(selected)[selected[,1] != 0]
+  selected = selected[selected != "(Intercept)"]
+  selected = predictors[match(selected,preds)]
   # Remove variables from global environment, just in case
   rm(X,Y,n_alphas,n_lambdas,model_type,folds,p,envir = .GlobalEnv)
   # Return selected variables
-  return(mods)
+  return(selected)
 }
