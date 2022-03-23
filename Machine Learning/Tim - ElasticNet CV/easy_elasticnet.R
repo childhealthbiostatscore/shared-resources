@@ -9,7 +9,7 @@ easy_elasticnet = function(data,outcome,predictors,
                            n_alphas = 10,n_lambdas = 100,max_coef = NULL,
                            model_type = "gaussian",time = NULL,
                            cv_method = "loo",folds = NULL,out = "1se.error",
-                           cores = 36,seed = 1017){
+                           cores = 4,seed = 1017){
   require(ensr)
   df = data
   # Random seed
