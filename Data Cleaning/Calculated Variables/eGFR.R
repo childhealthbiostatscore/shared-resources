@@ -2,61 +2,68 @@
 # based on Laura's code for Petter Bjornstad's eGFR vs mGFR study
 
 # male and female arguments specify how sex is coded
-calculate_egfr = function(age,sex,male = "Male",female = "Female"){
+# Returns a dataframe
+calculate_egfr = function(age,serum_creatinine,cystatin_c,height,
+                          sex,male = "Male",female = "Female",alpha = 0.5){
+  # Format input
   age = floor(age)
-  sex[sex == male] = "m"
-  sex[sex == female] = "f"
+  sex = as.character(sex)
+  sex[sex == male] = "M"
+  sex[sex == female] = "F"
+  sex[sex != "M" & sex != "F"] = NA
+  # Get qcr
+  qcr = age
+  # Younger participants
+  qcr[age==8] <- 0.46
+  qcr[age==9] <- 0.49
+  qcr[age==10] <- 0.51 
+  qcr[age==11] <- 0.53 
+  qcr[age==12] <- 0.57
+  qcr[age==13] <- 0.59
+  qcr[age==14] <- 0.61
+  # Females
+  qcr[age==15 & sex=="F"] <- 0.64
+  qcr[age==16 & sex=="F"] <- 0.67
+  qcr[age==17 & sex=="F"] <- 0.69
+  qcr[age==18 & sex=="F"] <- 0.69
+  qcr[age==19 & sex=="F"] <- 0.70
+  qcr[age>19 & sex=="F"] <- 0.70
+  # Males
+  qcr[age==15 & sex=="M"] <- 0.72
+  qcr[age==16 & sex=="M"] <- 0.78
+  qcr[age==17 & sex=="M"] <- 0.82
+  qcr[age==18 & sex=="M"] <- 0.85
+  qcr[age==19 & sex=="M"] <- 0.88
+  qcr[age>19 & sex=="M"] <- 0.90
+  # Calculate final metrics
+  eGFR_fas_cr = 107.3/(serum_creatinine/qcr)
+  # eGFR FAS combined creatinine and cystatin-C
+  f1 <- serum_creatinine/qcr
+  f2 <- 1-0.5
+  f3 <- cystatin_c/0.82
+  eGFR_fas_cr_cysc <- 107.3 / ((0.5*f1) + (f2*f3))
+  # eGFR Zapatelli
+  eGFR_Zap <- (507.76*exp(0.003*(height)))/
+    ((cystatin_c^0.635)*((serum_creatinine*88.4)^0.547))
+  # eGFR bedside Schwartz
+  eGFR_bedside_Schwartz <- (41.3*(height/100))/serum_creatinine
+  # Return dataframe
+  return(data.frame(list("eGFR_fas_cr" = eGFR_fas_cr,"eGFR_fas_cr_cysc" = eGFR_fas_cr_cysc,
+                         "eGFR_Zap" = eGFR_Zap)))
 }
 
 
-# calculate QCR values for FAS equations
-alldata$age <- floor(alldata$age)
-alldata$qcr[alldata$age==8] <- 0.46
-alldata$qcr[alldata$age==9] <- 0.49
-alldata$qcr[alldata$age==10] <- 0.51 
-alldata$qcr[alldata$age==11] <- 0.53 
-alldata$qcr[alldata$age==12] <- 0.57
-alldata$qcr[alldata$age==13] <- 0.59
-alldata$qcr[alldata$age==14] <- 0.61
-# females
-alldata$qcr[alldata$age==15 & alldata$sex_MF=="F"] <- 0.64
-# males
-alldata$qcr[alldata$age==15 & alldata$sex_MF=="M"] <- 0.72
-# females
-alldata$qcr[alldata$age==16 & alldata$sex_MF=="F"] <- 0.67
-# males
-alldata$qcr[alldata$age==16 & alldata$sex_MF=="M"] <- 0.78
-# females
-alldata$qcr[alldata$age==17 & alldata$sex_MF=="F"] <- 0.69
-# males
-alldata$qcr[alldata$age==17 & alldata$sex_MF=="M"] <- 0.82
-# females
-alldata$qcr[alldata$age==18 & alldata$sex_MF=="F"] <- 0.69
-# males
-alldata$qcr[alldata$age==18 & alldata$sex_MF=="M"] <- 0.85
-# females
-alldata$qcr[alldata$age==19 & alldata$sex_MF=="F"] <- 0.70
-# males
-alldata$qcr[alldata$age==19 & alldata$sex_MF=="M"] <- 0.88
-# females
-alldata$qcr[alldata$age>19 & alldata$sex_MF=="F"] <- 0.70
-# males
-alldata$qcr[alldata$age>19 & alldata$sex_MF=="M"] <- 0.90
 
-# eGFR FAS creatinine
-alldata$eGFR.fas_cr <-107.3/(alldata$serum_creatinine/alldata$qcr)
+# females
 
-# eGFR FAS combined creatinine and cystatin-C
-alldata$f1 <- alldata$serum_creatinine/alldata$qcr
-alldata$f2 <- 1-0.5
-alldata$f3 <- alldata$cystatin_c/0.82
-alldata$eGFR.fas_cr_cysc <- 107.3 / ((0.5*alldata$f1) + (alldata$f2*alldata$f3))
+# males
 
-# eGFR Zapatelli
-alldata$eGFR.Zap <- (507.76*exp(0.003*(alldata$clamp_height)))/((alldata$cystatin_c^0.635)*((alldata$serum_creatinine*88.4)^0.547))
 
-# eGFR bedside Schwartz
-alldata$eGFR.bedside_Schwartz <- (41.3*(alldata$clamp_height/100))/alldata$serum_creatinine
+
+
+
+
+
 
 # eGFR CKiD U25 age and sex-dependent sCR
 alldata$k_CKiD_scr = apply(alldata,1,function(r){
