@@ -1,8 +1,14 @@
 # Function for calculating "GFR_Schwartz","GFR_FAS","GFR_Zappitelli","GFR_CKIDU25"
 # based on Laura's code for Petter Bjornstad's eGFR vs mGFR study
 
-# male and female arguments specify how sex is coded
+# male and female arguments specify how sex is coded. 
 # Returns a dataframe
+# Assumes units given in:
+# Muhari-Stark, Edit, and Gilbert J. Burckart. “Glomerular Filtration Rate 
+# Estimation Formulas for Pediatric and Neonatal Use.” 
+# The Journal of Pediatric Pharmacology and Therapeutics 23, no. 6 (November 1, 2018): 424–31. 
+# https://doi.org/10.5863/1551-6776-23.6.424.
+
 egfr_calc = function(age,serum_creatinine,cystatin_c,bun = NULL,height,
                 sex,male = "Male",female = "Female",alpha = 0.5){
   # Format input
