@@ -13,6 +13,7 @@ def calc_egfr(df, age="age", serum_creatinine="creatinine_s",
     cystatin_c = pd.to_numeric(df[cystatin_c], errors="coerce")
     height = pd.to_numeric(df[height], errors="coerce")
     bun = pd.to_numeric(df[bun], errors="coerce")
+    age = pd.to_numeric(df[age], errors="coerce")
     # Younger participants
     qcr.replace({8: 0.46, 9: 0.49, 10: 0.51, 11: 0.53,
                 12: 0.57, 13: 0.59, 14: 0.61}, inplace=True)
@@ -45,11 +46,22 @@ def calc_egfr(df, age="age", serum_creatinine="creatinine_s",
         (1.099 ** m) * ((height / 1.4) ** 0.188)
     # eGFR bedside Schwartz
     eGFR_bedside_Schwartz = (41.3 * (height / 100)) / serum_creatinine
-    # Combine
+    # CKD-EPI Creatinine 2021 https://www.kidney.org/content/ckd-epi-creatinine-equation-2021
+    a1_f = -0.241
+    a1_m = -0.302
+    a2 = -1.200
+    f = sex.replace({"M": 0, "F": 1})
+    a = sex.replace({"M": -0.302, "F": -0.241})
+    k = sex.replace({"M": 0.9, "F": 0.7})
+    # Calculate
+    eGFR_CKD_epi = 142 * (np.minimum(serum_creatinine / k, 1)**a) * \
+        (np.maximum(serum_creatinine / k, 1)**-1.200) * \
+        (0.9938**age) * (1.012 * f + (1 - f))
+    # Add results to dataframe
     egfr = pd.concat(
-        [eGFR_Schwartz, eGFR_bedside_Schwartz, eGFR_Zap, eGFR_fas_cr, eGFR_fas_cr_cysc], axis=1)
+        [eGFR_Schwartz, eGFR_bedside_Schwartz, eGFR_Zap, eGFR_fas_cr, eGFR_fas_cr_cysc, eGFR_CKD_epi], axis=1)
     egfr.columns = ["eGFR_Schwartz", "eGFR_bedside_Schwartz", "eGFR_Zap",
-                    "eGFR_fas_cr", "eGFR_fas_cr_cysc"]
+                    "eGFR_fas_cr", "eGFR_fas_cr_cysc", "eGFR_CKD_epi"]
     df = pd.concat([df, egfr], axis=1)
     # Return
     return df
