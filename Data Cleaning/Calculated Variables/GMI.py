@@ -17,34 +17,45 @@ df = pd.read_csv(
 # k1, k2, and k3 are parameters in the equations and will be chosen based on iterative least squares.
 
 
-def minmod(t, initial_state, params, I, Ib, Gb):
+def minmod(t, initial_state, k1, k2, k3, I, Ib, Gb):
     G, X = initial_state
-    G0, k1, k2, k3 = params
     dG = -k1 * (G - Gb) - X * G
     dX = k3 * (I(t) - Ib) - k2 * X
     return dG, dX
 
 
 # Testing
+import pandas as pd
+import numpy as np
 df = pd.read_csv(
-    "/Users/timvigers/Downloads/ModSimPy/examples/glucose_insulin.csv")
+    "/Users/timvigers/Dropbox/Work/ModSimPy/chapters/glucose_insulin.csv")
 
 from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
-initial_state = pd.Series({"G": 92, "X": 11}, name='state')
-
-b = solve_ivp(fun=minmod, t_span=[0, 182],
-              G0=270, k1=0.02, k2=0.02, k3=1.5e-05,
-              I=interp1d(df.time, df.insulin),
-              Gb=92, Ib=11)
-
-t_0 = df.index[0]
-t_end = df.index[-1]
-Gb = df.glucose[t_0]
-Ib = df.insulin[t_0]
+initial_state = pd.Series({"G": 270, "X": 0}, name='state')
+t_0 = df["time"].iloc[0]
+t_end = df["time"].iloc[-1]
+Gb = 92
+Ib = 11
 I = interp1d(df.time, df.insulin)
-bunch = solve_ivp(slope_func, [t_0, t_end], system.init,
-                  args=[system], **options)
+k1 = 0.02
+k2 = 0.02
+k3 = 1.5e-05
+dt = 2
+ts = np.array([i for i in range(t_0, t_end, dt)])
+
+
+b = solve_ivp(fun=minmod, t_span=[t_0, t_end], t_eval=ts,
+              y0=initial_state,
+              args=[k1, k2, k3, I, Ib, Gb])
+
+df["model glucose"] = pd.Series(b.y[0])
+df["model insulin"] = pd.Series(b.y[1])
+
+# Plot
+from plotnine import ggplot, aes, geom_point, geom_line
+ggplot(df) + aes(x="time", y="glucose") + \
+    geom_point() + geom_line(aes(y="model glucose"))
 
 
 def estimate_min_mod(df, glucose_prefix="glucose", insulin_prefix="insulin",
