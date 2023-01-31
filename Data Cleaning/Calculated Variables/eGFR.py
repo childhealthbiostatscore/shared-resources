@@ -37,7 +37,7 @@ def calc_egfr(df, age="age", serum_creatinine="creatinine_s",
     f2 = 1 - alpha
     f3 = cystatin_c / 0.82
     eGFR_fas_cr_cysc = 107.3 / ((0.5 * f1) + (f2 * f3))
-    # eGFR Zapatelli
+    # eGFR Zappitelli
     eGFR_Zap = (507.76 * np.exp((0.003 * height)) /
                 ((cystatin_c ** 0.635) * ((serum_creatinine * 88.4) ** 0.547)))
     # eGFR Schwartz
