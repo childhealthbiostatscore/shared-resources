@@ -47,9 +47,6 @@ def calc_egfr(df, age="age", serum_creatinine="creatinine_s",
     # eGFR bedside Schwartz
     eGFR_bedside_Schwartz = (41.3 * (height / 100)) / serum_creatinine
     # CKD-EPI Creatinine 2021 https://www.kidney.org/content/ckd-epi-creatinine-equation-2021
-    a1_f = -0.241
-    a1_m = -0.302
-    a2 = -1.200
     f = sex.replace({"M": 0, "F": 1})
     a = sex.replace({"M": -0.302, "F": -0.241})
     k = sex.replace({"M": 0.9, "F": 0.7})
