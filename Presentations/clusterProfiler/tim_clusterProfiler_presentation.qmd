@@ -1,13 +1,17 @@
 ---
 title: "clusterProfiler"
 author: "Tim Vigers"
-date: "`r format(Sys.time(), '%d %B %Y')`"
+date: "today"
 format: revealjs
 self-contained: true
 editor: source
-bibliography: references.bib
+bibliography: /Users/timvigers/Library/CloudStorage/Dropbox/Miscellaneous/zotero.bib
 csl: american-medical-association.csl
 ---
+
+```{r include=FALSE}
+library(knitr)
+```
 
 ## Functional enrichment
 
@@ -36,13 +40,22 @@ csl: american-medical-association.csl
 ## GO graph
 
 - Organized as a directed acyclic graph (DAG)
+- In general, child terms are more specific than parent terms
+  - E.g. *biosynthetic process* is a subtype of *metabolic process* and a *hexose* is a subtype of *monosaccharide*.
+  
+## GO graph example
 
 ![](hexose-biosynthetic-process.png)
 
-## KEGG: Kyoto Encyclopedia of Genes and Genomes
+## KEGG
 
+- Kyoto Encyclopedia of Genes and Genomes
 - A "manually curated database resource integrating various biological objects categorized into systems, genomic, chemical and health information." @kanehisaKEGGTaxonomybasedAnalysis2023
 - Sixteen databases in four broad categories:
+  1. Systems information (includes the pathway database)
+  2. Genomic information
+  3. Chemical information
+  4. Health information
 
 ##
 
@@ -50,25 +63,28 @@ csl: american-medical-association.csl
 
 [KEGG Gluconeogenesis Pathway](https://www.genome.jp/pathway/map00010)
 
-## Broad categories of KEGG pathways
+## More categories!
 
-1. Metabolism 
-2. Genetic Information Processing 
-3. Environmental Information Processing 
-4. Cellular Processes 
-5. Organismal Systems 
-6. Human Diseases 
-7. Drug Development
+KEGG pathways can be further subdivided into:
+
+  1. Metabolism 
+  2. Genetic Information Processing 
+  3. Environmental Information Processing 
+  4. Cellular Processes 
+  5. Organismal Systems 
+  6. Human Diseases 
+  7. Drug Development
 
 ## Other gene sets
 
-- GO and KEGG are the most frequently used @yuBiomedicalKnowledgeMining
+- GO, KEGG, and Reactome @gillespieReactomePathwayKnowledgebase2022 are the most frequently used @yuBiomedicalKnowledgeMining
 - Can use any pathway database for these analyses
 - Alternatives include: 
   - Disease Ontology (DO)
   - Disease Gene Network (DisGeNET)
   - wikiPathways
   - Molecular Signatures Database (MSigDb)
+- Unfortunately, the pathway database can have a significant impact on results
   
 ## Over representation analysis (ORA)
 
@@ -88,13 +104,18 @@ $$
 
 ## ORA example
 
-- A background of 10,000 genes, of which 260 are categorized as "axon guidance." 
+- A background of 10,000 genes, of which 260 are categorized as "axon guidance" ($S$). 
 - We find that 1000 genes are differentially expressed, and 50 of those are categorized as "axon guidance."
 - Is this statistically significant over representation?
+
+## ORA example
 
 ```{r echo=TRUE}
 phyper(q = 50-1,m = 260,n=10000-260,k=1000,lower.tail = F)
 m = matrix(c(50,1000-50,260-50,10000-1000-260+50),nr=2)
+colnames(m) = c("DE","Not DE")
+rownames(m) = c("In S","Not in S")
+m
 fisher.test(m,alternative = "g")$p.value
 ```
 
@@ -112,17 +133,67 @@ fisher.test(m,alternative = "g")$p.value
 - An enrichment score (ES) is calculated by: 
   1. Walking down the gene list $L$ (usually ranked by effect size/correlation with the phenotype). 
   2. When a gene is in set $S$, the ES increases, and decreases when not in $S$.
+      - Increment depends on the statistic in $L$
 
 ## Gene set enrichment analysis (GSEA)
 
   3. The final ES is the maximum deviation from 0, and corresponds to a weighted Kolmogorov–Smirnov-like statistic. @subramanianGeneSetEnrichment2005
   4. The statistical significance of the ES is estimated using an empirical phenotype-based permutation test. Shuffling the phenotype preserves gene-gene correlations, and is better than shuffling gene labels.
   
-
-
 ## clusterProfiler
 
 - Essentially, a set of wrapper functions that simplify functional enrichment analyses.
-- 
+- Provides really nice visualizations for pathway analyses.
+- Also includes utility functions that simplify conversion between gene identifiers (e.g. from gene symbol to Entrez ID).
+- Allows for comparison of multiple gene lists.
+
+## Reactome ORA example
+
+```{r echo=TRUE}
+library(ReactomePA)
+data(geneList, package="DOSE")
+head(geneList)
+de <- names(geneList)[abs(geneList) > 1.5]
+head(de)
+x <- enrichPathway(gene=de)
+res = x@result
+kable(head(res[,1:6]),row.names = F)
+```
+
+```{r echo=TRUE}
+library(enrichplot)
+barplot(x, showCategory=10) 
+dotplot(x, showCategory=10) 
+```
+
+```{r echo=TRUE}
+library(DOSE)
+# Convert gene ID to Symbol
+edox <- setReadable(x, 'org.Hs.eg.db', 'ENTREZID')
+# Network plot
+cnetplot(edox, foldChange=geneList)
+# Circular plot
+cnetplot(edox, foldChange=geneList, circular = TRUE)
+```
+
+```{r echo=TRUE}
+heatplot(edox, foldChange=geneList, showCategory=5)
+```
+
+```{r}
+edox <- pairwise_termsim(edox)
+treeplot(edox)
+```
+
+## Theme comparison
+
+```{r echo=TRUE}
+data(gcSample)
+str(gcSample)
+xx <- compareCluster(gcSample, fun="enrichKEGG",
+                     organism="hsa", pvalueCutoff=0.05)
+xx <- pairwise_termsim(xx)                     
+emapplot(xx)
+```
 
 ## References
