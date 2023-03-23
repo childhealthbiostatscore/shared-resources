@@ -2,6 +2,7 @@
 title: "clusterProfiler"
 author: "Tim Vigers"
 date: "today"
+date-format: long
 format: revealjs
 self-contained: true
 editor: source
@@ -115,7 +116,7 @@ phyper(q = 50-1,m = 260,n=10000-260,k=1000,lower.tail = F)
 m = matrix(c(50,1000-50,260-50,10000-1000-260+50),nr=2)
 colnames(m) = c("DE","Not DE")
 rownames(m) = c("In S","Not in S")
-m
+kable(m)
 fisher.test(m,alternative = "g")$p.value
 ```
 
@@ -146,25 +147,41 @@ fisher.test(m,alternative = "g")$p.value
 - Provides really nice visualizations for pathway analyses.
 - Also includes utility functions that simplify conversion between gene identifiers (e.g. from gene symbol to Entrez ID).
 - Allows for comparison of multiple gene lists.
+- Uses `dplyr` verbs (`mutate()`, etc.) for altering figures and results.
 
 ## Reactome ORA example
 
 ```{r echo=TRUE}
+library(clusterProfiler)
 library(ReactomePA)
 data(geneList, package="DOSE")
 head(geneList)
 de <- names(geneList)[abs(geneList) > 1.5]
 head(de)
+```
+
+## Reactome ORA example
+
+```{r echo=TRUE}
 x <- enrichPathway(gene=de)
 res = x@result
 kable(head(res[,1:6]),row.names = F)
 ```
 
+## Reactome ORA barplot
+
 ```{r echo=TRUE}
 library(enrichplot)
 barplot(x, showCategory=10) 
+```
+
+## Reactome ORA dotplot
+
+```{r echo=TRUE}
 dotplot(x, showCategory=10) 
 ```
+
+## Reactome ORA gene-concept network
 
 ```{r echo=TRUE}
 library(DOSE)
@@ -176,24 +193,119 @@ cnetplot(edox, foldChange=geneList)
 cnetplot(edox, foldChange=geneList, circular = TRUE)
 ```
 
-```{r echo=TRUE}
-heatplot(edox, foldChange=geneList, showCategory=5)
+## Reactome ORA gene-concept network
+
+```{r}
+cnetplot(edox, foldChange=geneList, circular = TRUE)
 ```
+
+## Viewing a specific pathway
+
+```{r echo=TRUE}
+viewPathway("E2F mediated regulation of DNA replication", 
+            readable = TRUE, 
+            foldChange = geneList)
+```
+
+## Reactome ORA heatmap
+
+```{r echo=TRUE}
+heatplot(edox, foldChange=geneList, showCategory=10)
+```
+
+## Reactome ORA treeplot
+
+Treeplots give you a slightly higher level overview by clustering terms based on similarity.
 
 ```{r}
 edox <- pairwise_termsim(edox)
 treeplot(edox)
 ```
 
+## KEGG GSEA
+
+- All of the previous plots can be used with either ORA or GSEA. I would recommend using GSEA results whenever possible.
+- There are some GSEA-specific plots that can be useful as well.
+
+## KEGG GSEA ridgeplot
+
+- The ridgeplot helps users to interpret up vs. down-regulated pathways.
+
+```{r echo=TRUE}
+x <- gseKEGG(geneList)
+edox <- setReadable(x, 'org.Hs.eg.db', 'ENTREZID')
+edox = pairwise_termsim(edox)
+```
+
+## KEGG GSEA ridgeplot
+
+```{r echo=TRUE}
+ridgeplot(edox)
+```
+
+## KEGG GSEA statistic
+
+```{r echo=TRUE}
+gseaplot2(edox, geneSetID = 1:3, pvalue_table = TRUE,
+          color = c("#E495A5", "#86B875", "#7DB0DD"), ES_geom = "dot")
+```
+
+## KEGG GSEA PubMed search
+
+- Can plot the number and proportion of publications containing specific terms over time.
+
+```{r echo=TRUE}
+terms <- edox$Description[1:5]
+pmcplot(terms, 2010:2020, proportion=FALSE)
+```
+
+## Theme comparison
+
+- The `compareCluster` function allows you to perform enrichment analysis on multiple gene lists at once.
+- There is a formula interface that allows for somewhat complex comparisons.
+
+```{r echo=TRUE}
+df <- data.frame(Entrez=names(geneList), FC=geneList)
+df$group <- "upregulated"
+df$group[df$FC < 0] <- "downregulated"
+df$othergroup <- "A"
+df$othergroup[abs(df$FC) > 2] <- "B"
+```
+
+## Theme comparison
+
+```{r echo=TRUE}
+kable(head(df))
+```
+
+## Theme comparison
+
+```{r echo=TRUE}
+formula_res <- compareCluster(Entrez~group+othergroup, data=df, fun="enrichKEGG")
+dotplot(formula_res, x="group") + facet_grid(~othergroup)
+```
+
+## Theme comparison
+
+```{r}
+cnetplot(formula_res)
+```
+
 ## Theme comparison
 
 ```{r echo=TRUE}
 data(gcSample)
-str(gcSample)
-xx <- compareCluster(gcSample, fun="enrichKEGG",
-                     organism="hsa", pvalueCutoff=0.05)
-xx <- pairwise_termsim(xx)                     
-emapplot(xx)
+str(gcSample) 
+ck <- compareCluster(geneCluster = gcSample, fun = enrichKEGG)
+ck <- setReadable(ck, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
 ```
+
+## Theme comparison
+
+```{r}
+cnetplot(ck)
+```
+
+## Questions?
 
 ## References
