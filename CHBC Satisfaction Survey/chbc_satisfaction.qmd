@@ -1,0 +1,239 @@
+---
+title: "Biostatistics Satisfaction Survey"
+author: "Tim Vigers"
+date: "today"
+date-format: long
+format:
+  html:
+    toc: true
+    toc-depth: 5
+    toc-float: true
+    code-fold: true
+    self-contained: true
+    fig-cap-location: top
+    page-layout: full
+editor: source
+---
+
+```{r setup}
+#| include: false
+library(tidyverse)
+library(gtsummary)
+library(gt)
+library(redcapAPI)
+library(likert)
+library(forcats)
+# Import from REDCap
+unlockREDCap(c(rcon = "Biostatistics Satisfaction Survey"),
+  keyring = "API_KEYs",
+  envir = 1,
+  url = "https://redcap.ucdenver.edu/api/"
+)
+exportBulkRecords(list(db = rcon), envir = 1)
+# Labels
+labels <- list(
+  "record_id" = "Record ID",
+  "redcap_repeat_instrument" = "Repeat Instrument",
+  "redcap_repeat_instance" = "Repeat Instance",
+  "redcap_survey_identifier" = "Survey Identifier",
+  "chbc_satisfaction_timestamp" = "Survey Timestamp",
+  "investigator_name" = "Your name",
+  "investigator_email" = "Your email",
+  "title" = "Your title",
+  "other_title" = "If other, please specify:",
+  "department" = "Your department",
+  "other_department" = "If other, please specify:",
+  "are_you_providing_feedback" = "Are you providing feedback on a specific project or multiple projects/an ongoing collaboration?",
+  "project_title" = "Project title",
+  "services_provided___1" = "General consultation",
+  "services_provided___2" = "Study design (including sample size/power calculation)",
+  "services_provided___3" = "Protocol development",
+  "services_provided___4" = "Grant assistance",
+  "services_provided___5" = "Data analysis",
+  "services_provided___6" = "Manuscript assistance",
+  "services_provided___7" = "Conference abstract",
+  "services_provided___10" = "Survey or questionnaire design",
+  "services_provided___11" = "Qualitative or mixed methods analysis",
+  "services_provided___8" = "Ongoing statistical collaboration",
+  "services_provided___9" = "Other",
+  "request_chbc" = "The process for requesting support from the CHBC was straightforward",
+  "expectations_chbc" = "The expectations of working with the CHBC were clearly explained.",
+  "cost_chbc" = "The cost/funding structure for your needs was clearly explained.",
+  "value_chbc" = "The cost of the services was appropriate for the value of work received.",
+  "again_chbc" = "I would use the CHBC again for future statistical support.",
+  "colleague_chbc" = "I would recommend the CHBC to a colleague."
+)
+# Drop empty department levels
+db_chbc_satisfaction$department <- droplevels(db_chbc_satisfaction$department)
+# Explicit NAs
+db_chbc_satisfaction$department <- forcats::fct_na_value_to_level(
+  db_chbc_satisfaction$department,
+  level = "Unknown"
+)
+```
+
+# Overall
+
+## Project information
+
+```{r}
+db_chbc_satisfaction %>%
+  select(
+    title, are_you_providing_feedback
+  ) %>%
+  tbl_summary(missing_text = "Missing", label = labels) %>%
+  as_gt(.)
+```
+
+## Department information
+
+```{r}
+# Table
+db_chbc_satisfaction %>%
+  select(department) %>%
+  tbl_summary(missing_text = "Missing", label = labels) %>%
+  as_gt(.)
+```
+
+```{r}
+#| fig-width: 12
+#| fig-height: 9
+# Bar plot
+db_chbc_satisfaction %>%
+  count(department) %>%
+  mutate(pct = prop.table(n) * 100) %>%
+  mutate(department = fct_reorder(department, -n)) %>%
+  ggplot(aes(x = "", n, fill = department)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(sprintf("%1.1f", pct), "%")),
+    position = position_stack(vjust = 0.5)
+  ) +
+  ylab("Number of Responses") +
+  ggtitle("Responses by Department") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(), legend.title = element_blank()
+  )
+# Pie chart
+db_chbc_satisfaction %>%
+  count(department) %>%
+  mutate(pct = prop.table(n) * 100) %>%
+  mutate(department = fct_reorder(department, -n)) %>%
+  ggplot(aes(x = "", n, fill = department)) +
+  geom_bar(stat = "identity") +
+  coord_polar("y", start = 0) +
+  ggtitle("Responses by Department") +
+  theme_void() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(), legend.title = element_blank()
+  )
+```
+
+## Services provided
+
+```{r}
+db_chbc_satisfaction %>%
+  select(contains("services_provided")) %>%
+  tbl_summary(missing_text = "Missing", label = labels) %>%
+  as_gt(.)
+```
+
+## Feedback
+
+### Proportions
+
+```{r}
+#| fig-width: 10
+# Table
+db_chbc_satisfaction %>%
+  select(request_chbc:colleague_chbc) %>%
+  tbl_summary(missing_text = "Missing", label = labels) %>%
+  as_gt(.)
+# Bar chart
+db_chbc_satisfaction %>%
+  select(request_chbc:colleague_chbc) %>%
+  `colnames<-`(labels[colnames(.)]) %>%
+  mutate_all(~ fct_recode(., NULL = "N/A")) %>% # Remove "N/A" answers
+  likert(.) %>%
+  plot(.)
+```
+
+### Numeric
+
+```{r}
+# Table
+db_chbc_satisfaction %>%
+  select(request_chbc:colleague_chbc) %>%
+  mutate_all(~ as.numeric(.)) %>%
+  mutate_all(~ na_if(., 6)) %>%
+  tbl_summary(
+    missing_text = "Missing", label = labels,
+    type = list(where(is.numeric) ~ "continuous2")
+  ) %>%
+  as_gt(.)
+```
+
+### Dissatisfied investigators
+
+```{r}
+dissatisfaction <- c("Strongly disagree", "Somewhat disagree", "Neutral")
+db_chbc_satisfaction %>%
+  select(investigator_name, investigator_email, request_chbc:cost_chbc) %>%
+  filter(if_any(c(-investigator_name, -investigator_email), ~ .x %in% dissatisfaction)) %>%
+  `colnames<-`(labels[colnames(.)]) %>%
+  gt(.)
+```
+
+# By department
+
+## Project information
+
+```{r}
+db_chbc_satisfaction %>%
+  select(
+    department, title, are_you_providing_feedback
+  ) %>%
+  tbl_summary(by = department, missing_text = "Missing", label = labels) %>%
+  as_gt(.)
+```
+
+## Services provided
+
+```{r}
+db_chbc_satisfaction %>%
+  select(department, contains("services_provided")) %>%
+  tbl_summary(by = department, missing_text = "Missing", label = labels) %>%
+  as_gt(.)
+```
+
+## Feedback
+
+### Proportions
+
+```{r}
+#| fig-width: 10
+# Table
+db_chbc_satisfaction %>%
+  select(department, request_chbc:colleague_chbc) %>%
+  tbl_summary(by = department, missing_text = "Missing", label = labels) %>%
+  as_gt(.)
+```
+
+### Numeric
+
+```{r}
+# Table
+db_chbc_satisfaction %>%
+  select(department, request_chbc:colleague_chbc) %>%
+  mutate(across(request_chbc:colleague_chbc, ~ as.numeric(.))) %>%
+  mutate(across(request_chbc:colleague_chbc, ~ na_if(., 6))) %>%
+  tbl_summary(
+    missing_text = "Missing", label = labels, by = department,
+    type = list(where(is.numeric) ~ "continuous2")
+  ) %>%
+  as_gt(.)
+```
