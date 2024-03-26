@@ -39,7 +39,7 @@ easy_elasticnet = function(data,outcome,predictors,
     # Complete cases
     idx = intersect(which(complete.cases(Y)),which(complete.cases(X)))
     X = data.matrix(X[idx,])
-    Y = as.numeric(Y[idx])
+    Y = as.numeric(Y[idx,])
     # Remove variables without any variance
     near_zero = caret::nearZeroVar(X)
     if(length(near_zero)>0){
