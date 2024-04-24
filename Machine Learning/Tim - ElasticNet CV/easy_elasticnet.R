@@ -39,7 +39,7 @@ easy_elasticnet = function(data,outcome,predictors,
     # Complete cases
     idx = intersect(which(complete.cases(Y)),which(complete.cases(X)))
     X = data.matrix(X[idx,])
-    Y = as.numeric(Y[idx,])
+    Y = unlist(Y[idx,])
     # Remove variables without any variance
     near_zero = caret::nearZeroVar(X)
     if(length(near_zero)>0){
@@ -74,11 +74,13 @@ easy_elasticnet = function(data,outcome,predictors,
   res = summary(e)
   min_err = min(res$cvm,na.rm = T)
   se_err = sd(res$cvm,na.rm = T)/sqrt(sum(!is.na(res$cvm)))
+  
   if (out == "min.error"){
     good_mods = which.min(res$cvm)
   } else if (out == "1se.error"){
     good_mods = which(res$cvm <= (min_err + se_err))
   }
+
   params = data.frame(res[good_mods,])
   params = params[which(params$nzero == min(params$nzero)),]
   params = params[which.min(params$cvm),]
