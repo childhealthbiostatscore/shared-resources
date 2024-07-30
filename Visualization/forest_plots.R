@@ -22,8 +22,8 @@ time_varying_forest_plot <- function(
     x = !!sym(x), y = fct_rev(!!sym(time_var)),
     color = !!sym(time_var)
   )) +
-    geom_point() +
-    geom_linerange(aes(xmin = !!sym(ll), xmax = !!sym(ul))) +
+    geom_point(size = 10) +
+    geom_linerange(aes(xmin = !!sym(ll), xmax = !!sym(ul)), linewidth = 2) +
     theme_classic() +
     facet_grid(as.formula(paste0(var, "~."))) +
     ylab(time_label) +
